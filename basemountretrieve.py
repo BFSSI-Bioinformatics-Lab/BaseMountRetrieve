@@ -26,13 +26,21 @@ def print_version(ctx, param, value):
     quit()
 
 
+def convert_to_path(ctx, param, value):
+    if not value or ctx.resilient_parsing:
+        return
+    value = Path(value)
+    return value
+
+
 @click.command()
 @click.option('-i', '--inputdir',
               type=click.Path(exists=True),
               required=False,
               default=None,
               help='Path to the Samples directory on BaseMount for a particular project. e.g. '
-                   'basemount/Projects/[your project]/Samples. ')
+                   'basemount/Projects/[your project]/Samples.',
+              callback=convert_to_path)
 @click.option('-o', '--outdir',
               type=click.Path(exists=False),
               required=False,
@@ -46,7 +54,6 @@ def print_version(ctx, param, value):
               callback=print_version,
               expose_value=False)
 def cli(inputdir, outdir):
-    inputdir = Path(inputdir)
     logging.info("Started BaseMountRetrieve")
 
     # Create output directory if it doesn't already exist
@@ -67,7 +74,10 @@ def cli(inputdir, outdir):
         samplename = i.name
 
         # Copy to outdir and prepare file for chmod
-        outname = outdir / Path(sampleid + "_" + samplename)
+        if sampleid not in samplename:
+            outname = outdir / Path(sampleid + "_" + samplename)
+        else:
+            outname = outdir / Path(samplename)
         shutil.copy(i, outname)  # shutil.copy is filesystem agnostic, unlike shutil.move, os.rename, or Path.rename
         modlist.append(outname)
 
