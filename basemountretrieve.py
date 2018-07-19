@@ -34,7 +34,7 @@ def convert_to_path(ctx, param, value):
 
 
 @click.command()
-@click.option('-i', '--inputdir',
+@click.option('-p', '--projectdir',
               type=click.Path(exists=True),
               required=False,
               default=None,
@@ -43,7 +43,7 @@ def convert_to_path(ctx, param, value):
               callback=convert_to_path)
 @click.option('-o', '--outdir',
               type=click.Path(exists=False),
-              required=False,
+              required=True,
               default=None,
               help='Directory to dump all .fastq.gz files. Note that the Sample ID will be appended to the beginning '
                    'of the copied .fastq.gz file, which normally only contains the Sample Name.')
@@ -53,14 +53,14 @@ def convert_to_path(ctx, param, value):
               is_eager=True,
               callback=print_version,
               expose_value=False)
-def cli(inputdir, outdir):
+def cli(projectdir, outdir):
     logging.info("Started BaseMountRetrieve")
 
     # Create output directory if it doesn't already exist
     os.makedirs(outdir, exist_ok=True)
 
     # Gather all BaseMount file paths
-    fastq_list = inputdir.glob("*/Files/*")
+    fastq_list = projectdir.glob("*/Files/*")
 
     # Filter out hidden stuff
     fastq_list = [x for x in fastq_list if ".id." not in str(x)]
