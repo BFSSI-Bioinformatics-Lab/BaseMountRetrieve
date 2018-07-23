@@ -14,6 +14,6 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/bfssi-forest-dussault/BaseMountRetrieve",
     packages=setuptools.find_packages(),
-    scripts=['BLASTn_Extract/BaseMountRetrieve.py'],
+    scripts=['BaseMountRetrieve/basemountretrieve.py'],
     install_requires=['click']
 )
