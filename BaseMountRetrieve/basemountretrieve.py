@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -65,8 +65,17 @@ def cli(projectdir, outdir):
     # Filter out hidden stuff
     fastq_list = [x for x in fastq_list if ".id." not in str(x)]
 
+    # Avoid copying files that already exist
+    transfer_list = []
+    outdir_files = os.listdir(outdir)
+    for j in fastq_list:
+        if str(j.name) not in outdir_files:
+            transfer_list.append(j)
+        else:
+            logging.info(f"Skipping {j.name} (already present in {outdir})")
+
     modlist = []
-    for i in fastq_list:
+    for i in transfer_list:
         logging.info(f"Copying {i.name}...")
 
         # Get name components of sample
