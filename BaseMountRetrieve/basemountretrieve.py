@@ -69,7 +69,17 @@ def cli(projectdir, outdir):
     transfer_list = []
     outdir_files = os.listdir(outdir)
     for j in fastq_list:
-        if str(j.name) not in outdir_files:
+        # Get name components of sample
+        sampleid = j.parents[1].name
+        samplename = j.name
+
+        # Copy to outdir and prepare file for chmod
+        if sampleid not in samplename:
+            outname = outdir / Path(sampleid + "_" + samplename)
+        else:
+            outname = outdir / Path(samplename)
+
+        if outname.name not in outdir_files:
             transfer_list.append(j)
         else:
             logging.info(f"Skipping {j.name} (already present in {outdir})")
