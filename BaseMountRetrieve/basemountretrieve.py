@@ -65,13 +65,14 @@ def cli(projectdir, outdir, miseqsim):
     os.makedirs(outdir, exist_ok=True)
 
     # Get samplesheets
-    samplesheet_dict = retrieve_samplesheets(projectdir=projectdir, outdir=outdir)
+    samplesheet_dict, run_translation_dict = retrieve_samplesheets(projectdir=projectdir, outdir=outdir)
 
-    # # Get list of samples to transfer
+    # Get list of samples to transfer
     retrieve_samples(projectdir=projectdir, outdir=outdir)
 
     # Move everything around to simulate MiSeq folder structure
     if miseqsim:
+        logfile_dict = retrieve_logfile_dict(projectdir)
         sample_dict = get_sample_dictionary(outdir)
         base_folders = ['Config',
                         'Data',
@@ -95,6 +96,16 @@ def cli(projectdir, outdir, miseqsim):
                 if sample_id in sample_id_list:
                     shutil.move(reads[0], read_folder / reads[0].name)
                     shutil.move(reads[1], read_folder / reads[1].name)
+
+            # Copy all the log files over to the 'Logs' folder
+            for verbose_run_name, log_list in logfile_dict.items():
+                if run_translation_dict[verbose_run_name] == run_id:
+                    for logfile in logfile_dict[verbose_run_name]:
+                        outname = outdir / run_id / 'Logs' / logfile.name
+                        shutil.copy(src=logfile, dst=outname)
+                        os.chmod(str(outname), 0o775)  # Fix permissions
+
+            retrieve_interop(run_id=run_id, projectdir=projectdir, outdir=outdir)
 
     # Delete remnant .csv files
     cleanup_csv = list(outdir.glob("*.csv"))
@@ -132,9 +143,6 @@ def retrieve_samples(projectdir: Path, outdir: Path):
             else:
                 logging.info(f"Skipping {i.name} (already present in {outdir})")
 
-    # List to store files that require chmod 0775
-    modlist = []
-
     # Begin copying files
     for i in sorted(set(transfer_list)):
         logging.info(f"Copying {i.name}...")
@@ -150,11 +158,25 @@ def retrieve_samples(projectdir: Path, outdir: Path):
             outname = outdir / Path(samplename)
         shutil.copy(i, outname)  # shutil.copy is filesystem agnostic, unlike shutil.move, os.rename, or Path.rename
         os.chmod(str(outname), 0o775)  # Fix permissions
-        modlist.append(outname)  # prep for chmod
-    return modlist
 
 
-def retrieve_samplesheets(projectdir: Path, outdir: Path):
+def retrieve_logfile_dict(projectdir: Path) -> dict:
+    run_folders = get_run_folders(projectdir)
+    log_dict = dict()
+    for verbose_run_name in run_folders:
+        logfiles = list(verbose_run_name.glob('Logs/*'))
+        logfiles = [Path(x) for x in logfiles if not Path(x).name.startswith(".")]
+        log_dict[verbose_run_name.name] = logfiles
+    return log_dict
+
+
+def retrieve_samplesheets(projectdir: Path, outdir: Path) -> tuple:
+    """
+    Returns two dictionaries due to a poor design decision. TODO: Make this whole thing less sloppy
+    :param projectdir:
+    :param outdir:
+    :return:
+    """
     # Locate samplesheets
     samplesheets = list(projectdir.glob('AppSessions.v1/*/Properties/Input.sample-sheet'))
     samplesheets = [Path(x) for x in samplesheets if ".id." not in str(x)]
@@ -165,13 +187,22 @@ def retrieve_samplesheets(projectdir: Path, outdir: Path):
 
     # Copy samplesheets into outdir
     samplesheet_dict = dict()
+    run_translation_dict = dict()
     for samplesheet in samplesheets:
-        outname = outdir / Path(samplesheet.parents[1].name + '.' + 'SampleSheet.csv')
+        verbose_run_name = samplesheet.parents[1].name
+        outname = outdir / (verbose_run_name + '.' + 'SampleSheet.csv')
         logging.info(f'Copying SampleSheet.csv for {samplesheet.parents[1].name} to {outname}')
         shutil.copy(str(samplesheet), str(outname))
         run_id = extract_run_name(samplesheet=samplesheet)
+        run_translation_dict[verbose_run_name] = run_id
         samplesheet_dict[run_id] = outname
-    return samplesheet_dict
+    return samplesheet_dict, run_translation_dict
+
+
+def get_run_folders(projectdir: Path) -> list:
+    runfolders = list(projectdir.glob('AppSessions.v1/*'))
+    runfolders = [Path(x) for x in runfolders if not Path(x).name.startswith(".")]
+    return runfolders
 
 
 def read_samplesheet(samplesheet: Path) -> pd.DataFrame:
@@ -236,6 +267,24 @@ def group_by_project(samplesheet_df: pd.DataFrame) -> dict:
     for project in project_list:
         project_dict[project] = list(samplesheet_df[samplesheet_df['Sample_Project'] == project]['Sample_ID'])
     return project_dict
+
+
+def retrieve_interop(run_id: str, projectdir: Path, outdir: Path):
+    logging.info("Attempting to copy InterOp folder contents...")
+    try:
+        interop_folder = projectdir.parents[1] / 'Runs' / run_id / 'Files' / 'InterOp'
+    except:
+        return
+
+    interop_folder_contents = list(interop_folder.glob("*"))
+    for f in interop_folder_contents:
+        logging.info(f"Copying {f} to {outdir}")
+        outname = outdir / run_id / 'InterOp' / f.name
+        shutil.copy(src=f, dst=outname)
+        try:
+            os.chmod(str(outname), 0o775)
+        except PermissionError:
+            pass
 
 
 def extract_run_name(samplesheet: Path) -> str:
@@ -332,7 +381,7 @@ def get_sample_dictionary(directory: Path) -> dict:
     fastq_file_list = retrieve_fastqgz(directory)
     sample_id_list = retrieve_sampleids(fastq_file_list)
     sample_dictionary = populate_sample_dictionary(sample_id_list, fastq_file_list)
-    logging.info(f"Successfully paired {len(sample_dictionary)} of {len(sample_id_list)} samples:")
+    logging.info(f"Successfully paired {len(sample_dictionary)} of {len(sample_id_list)} samples")
     return sample_dictionary
 
 
