@@ -15,5 +15,5 @@ setuptools.setup(
     url="https://github.com/bfssi-forest-dussault/BaseMountRetrieve",
     packages=setuptools.find_packages(),
     scripts=['BaseMountRetrieve/basemountretrieve.py'],
-    install_requires=['click']
+    install_requires=['click', 'pandas', 'numpy']
 )
