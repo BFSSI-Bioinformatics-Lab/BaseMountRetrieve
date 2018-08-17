@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -129,6 +129,8 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
         outdir_files = list(outdir.glob('*'))
     else:
         outdir_files = list(outdir.glob('*/Data/Intensities/Basecalls/*'))
+    if len(outdir_files) == 0:
+        transfer_list = fastq_list
 
     for i in fastq_list:
         # Get name components of sample
@@ -163,14 +165,12 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
         if miseqsim:
             outdir_file_names = [x.name for x in outdir_files]
             tmp_name = sampleid + '_' + i.name
-            if tmp_name in outdir_file_names:
-                pass
-            else:
+            if not tmp_name in outdir_file_names:
                 logging.info(f"Copying {samplename}...")
                 shutil.copy(i, outname)
                 os.chmod(str(outname), 0o775)  # Fix permissions
         else:
-            if outname.exists():
+            if not outname.exists():
                 logging.info(f"{outname.name} already exists. Skipping.")
             else:
                 logging.info(f"Copying {samplename}...")
