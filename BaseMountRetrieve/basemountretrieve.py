@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-__version__ = "0.1.2"
+__version__ = "0.1.5"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -68,7 +68,7 @@ def cli(projectdir, outdir, miseqsim):
     samplesheet_dict, run_translation_dict = retrieve_samplesheets(projectdir=projectdir, outdir=outdir)
 
     # Get list of samples to transfer, download files
-    retrieve_samples(projectdir=projectdir, outdir=outdir)
+    retrieve_samples(projectdir=projectdir, outdir=outdir, miseqsim=miseqsim)
 
     # Move everything around to simulate MiSeq folder structure
     if miseqsim:
@@ -115,7 +115,7 @@ def cli(projectdir, outdir, miseqsim):
     logging.info(f"Process complete. Results available in {outdir}")
 
 
-def retrieve_samples(projectdir: Path, outdir: Path):
+def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
     # Gather all BaseMount file paths
     fastq_list = list(projectdir.glob("Samples/*/Files/*"))
 
@@ -124,7 +124,12 @@ def retrieve_samples(projectdir: Path, outdir: Path):
 
     # Prepare to copy files
     transfer_list = []
-    outdir_files = list(outdir.glob('*'))
+
+    if not miseqsim:
+        outdir_files = list(outdir.glob('*'))
+    else:
+        outdir_files = list(outdir.glob('*/Data/Intensities/Basecalls/*'))
+
     for i in fastq_list:
         # Get name components of sample
         sampleid = i.parents[1].name
@@ -141,7 +146,7 @@ def retrieve_samples(projectdir: Path, outdir: Path):
             if outname.name not in str(j):
                 transfer_list.append(i)
             else:
-                logging.info(f"Skipping {i.name} (already present in {outdir})")
+                logging.info(f"Skipping {i.name}")
 
     # Begin copying files
     for i in sorted(set(transfer_list)):
@@ -155,12 +160,22 @@ def retrieve_samples(projectdir: Path, outdir: Path):
         else:
             outname = outdir / Path(samplename)
 
-        if outname.exists():
-            logging.info(f"{outname.name} already exists. Skipping.")
+        if miseqsim:
+            outdir_file_names = [x.name for x in outdir_files]
+            tmp_name = sampleid + '_' + i.name
+            if tmp_name in outdir_file_names:
+                pass
+            else:
+                logging.info(f"Copying {samplename}...")
+                shutil.copy(i, outname)
+                os.chmod(str(outname), 0o775)  # Fix permissions
         else:
-            logging.info(f"Copying {samplename}...")
-            shutil.copy(i, outname)  # shutil.copy is filesystem agnostic, unlike shutil.move, os.rename, or Path.rename
-            os.chmod(str(outname), 0o775)  # Fix permissions
+            if outname.exists():
+                logging.info(f"{outname.name} already exists. Skipping.")
+            else:
+                logging.info(f"Copying {samplename}...")
+                shutil.copy(i, outname)  # shutil.copy is filesystem agnostic, unlike shutil.move, os.rename
+                os.chmod(str(outname), 0o775)  # Fix permissions
 
 
 def retrieve_logfile_dict(projectdir: Path) -> dict:
@@ -273,7 +288,7 @@ def group_by_project(samplesheet_df: pd.DataFrame) -> dict:
 
 
 def retrieve_interop(run_id: str, projectdir: Path, outdir: Path):
-    logging.info(f"Copying InterOp folder contents for {run_id}")
+    logging.info(f"Copying InterOp folder contents for {run_id}...")
     try:
         interop_folder = projectdir.parents[1] / 'Runs' / run_id / 'Files' / 'InterOp'
     except:
@@ -284,7 +299,7 @@ def retrieve_interop(run_id: str, projectdir: Path, outdir: Path):
     for f in interop_folder_contents:
         outname = outdir / run_id / 'InterOp' / f.name
         if outname.exists():
-            logging.info(f"{outname.name} already exists in destination folder. Skipping.")
+            logging.info(f"Skipping {outname.name} for {run_id}")
         else:
             logging.info(f"Copying {f}...")
             shutil.copy(src=f, dst=outname)
@@ -384,7 +399,8 @@ def get_sample_dictionary(directory: Path) -> dict:
     fastq_file_list = retrieve_fastqgz(directory)
     sample_id_list = retrieve_sampleids(fastq_file_list)
     sample_dictionary = populate_sample_dictionary(sample_id_list, fastq_file_list)
-    logging.info(f"Successfully paired {len(sample_dictionary)} of {len(sample_id_list)} samples")
+    if len(sample_dictionary) > 0:
+        logging.info(f"Successfully paired {len(sample_dictionary)} of {len(sample_id_list)} samples")
     return sample_dictionary
 
 
