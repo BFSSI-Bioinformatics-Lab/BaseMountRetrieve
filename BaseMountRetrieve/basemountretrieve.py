@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -67,7 +67,7 @@ def cli(projectdir, outdir, miseqsim):
     # Get samplesheets
     samplesheet_dict, run_translation_dict = retrieve_samplesheets(projectdir=projectdir, outdir=outdir)
 
-    # Get list of samples to transfer
+    # Get list of samples to transfer, download files
     retrieve_samples(projectdir=projectdir, outdir=outdir)
 
     # Move everything around to simulate MiSeq folder structure
@@ -145,8 +145,6 @@ def retrieve_samples(projectdir: Path, outdir: Path):
 
     # Begin copying files
     for i in sorted(set(transfer_list)):
-        logging.info(f"Copying {i.name}...")
-
         # Get name components of sample
         sampleid = i.parents[1].name
         samplename = i.name
@@ -156,8 +154,13 @@ def retrieve_samples(projectdir: Path, outdir: Path):
             outname = outdir / Path(sampleid + "_" + samplename)
         else:
             outname = outdir / Path(samplename)
-        shutil.copy(i, outname)  # shutil.copy is filesystem agnostic, unlike shutil.move, os.rename, or Path.rename
-        os.chmod(str(outname), 0o775)  # Fix permissions
+
+        if outname.exists():
+            logging.info(f"{outname.name} already exists. Skipping.")
+        else:
+            logging.info(f"Copying {samplename}...")
+            shutil.copy(i, outname)  # shutil.copy is filesystem agnostic, unlike shutil.move, os.rename, or Path.rename
+            os.chmod(str(outname), 0o775)  # Fix permissions
 
 
 def retrieve_logfile_dict(projectdir: Path) -> dict:
@@ -270,7 +273,7 @@ def group_by_project(samplesheet_df: pd.DataFrame) -> dict:
 
 
 def retrieve_interop(run_id: str, projectdir: Path, outdir: Path):
-    logging.info("Attempting to copy InterOp folder contents")
+    logging.info(f"Copying InterOp folder contents for {run_id}")
     try:
         interop_folder = projectdir.parents[1] / 'Runs' / run_id / 'Files' / 'InterOp'
     except:
@@ -279,13 +282,16 @@ def retrieve_interop(run_id: str, projectdir: Path, outdir: Path):
 
     interop_folder_contents = list(interop_folder.glob("*"))
     for f in interop_folder_contents:
-        logging.info(f"Copying {f}...")
         outname = outdir / run_id / 'InterOp' / f.name
-        shutil.copy(src=f, dst=outname)
-        try:
-            os.chmod(str(outname), 0o775)
-        except PermissionError:
-            pass
+        if outname.exists():
+            logging.info(f"{outname.name} already exists in destination folder. Skipping.")
+        else:
+            logging.info(f"Copying {f}...")
+            shutil.copy(src=f, dst=outname)
+            try:
+                os.chmod(str(outname), 0o775)
+            except PermissionError:
+                pass
 
 
 def extract_run_name(samplesheet: Path) -> str:
