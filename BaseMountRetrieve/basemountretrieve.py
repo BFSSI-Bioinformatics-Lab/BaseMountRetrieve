@@ -87,7 +87,7 @@ def cli(projectdir, outdir, miseqsim):
             for f in base_folders:
                 os.makedirs(outdir / run_id / f, exist_ok=True)
 
-            read_folder = outdir / run_id / 'Data' / 'Intensities' / 'Basecalls'
+            read_folder = outdir / run_id / 'Data' / 'Intensities' / 'BaseCalls'
             os.makedirs(read_folder, exist_ok=True)
 
             df = read_samplesheet(samplesheet_path)
