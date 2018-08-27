@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -128,7 +128,7 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
     if not miseqsim:
         outdir_files = list(outdir.glob('*'))
     else:
-        outdir_files = list(outdir.glob('*/Data/Intensities/Basecalls/*'))
+        outdir_files = list(outdir.glob('*/Data/Intensities/BaseCalls/*'))
     if len(outdir_files) == 0:
         transfer_list = fastq_list
 
