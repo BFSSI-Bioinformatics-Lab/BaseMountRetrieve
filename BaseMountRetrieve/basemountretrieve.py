@@ -167,8 +167,11 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
             tmp_name = sampleid + '_' + i.name
             if not tmp_name in outdir_file_names:
                 logging.info(f"Copying {samplename}...")
-                shutil.copy(i, outname)
-                os.chmod(str(outname), 0o775)  # Fix permissions
+                try:
+                    shutil.copy(i, outname)
+                    os.chmod(str(outname), 0o775)  # Fix permissions
+                except IsADirectoryError:
+                    logging.warning(f"WARNING: Could not copy {i} because it's a directory' ")
         else:
             if not outname.exists():
                 logging.info(f"{outname.name} already exists. Skipping.")
