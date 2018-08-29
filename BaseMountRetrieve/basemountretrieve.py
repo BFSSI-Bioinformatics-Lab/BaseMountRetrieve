@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
+"""
+DEV NOTE:
+This is becoming difficult to maintain and could use a complete rewrite. The 'miseqsim' flag was added as an
+afterthought, though has now become the main focus of this script. Ultimately, navigating around BaseMount is going to
+be messy, but this could still be much cleaner.
+"""
 
-__version__ = "0.2.4"
+__version__ = "0.2.5"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -65,7 +71,7 @@ def cli(projectdir, outdir, miseqsim):
     os.makedirs(outdir, exist_ok=True)
 
     # Get samplesheets
-    samplesheet_dict, run_translation_dict = retrieve_samplesheets(projectdir=projectdir, outdir=outdir)
+    samplesheet_dict, run_translation_dict = retrieve_run_files(projectdir=projectdir, outdir=outdir)
 
     # Get list of samples to transfer, download files
     retrieve_samples(projectdir=projectdir, outdir=outdir, miseqsim=miseqsim)
@@ -81,16 +87,24 @@ def cli(projectdir, outdir, miseqsim):
                         'Logs',
                         'Recipes',
                         'Thumbnail_Images']
-        for run_id, samplesheet_path in samplesheet_dict.items():
+        for run_id, file_list in samplesheet_dict.items():
             os.makedirs(outdir / run_id, exist_ok=True)
-            shutil.copy(samplesheet_path, outdir / run_id / 'SampleSheet.csv')
+            shutil.copy(file_list[0], outdir / run_id / 'SampleSheet.csv')
+            shutil.copy(file_list[1], outdir / run_id / 'RunInfo.xml')
+            shutil.copy(file_list[2], outdir / run_id / 'RunParameters.xml')
+
+            # Fix permissions on .xml files
+            os.chmod(str(outdir / run_id / 'RunInfo.xml'), 0o775)  # Fix permissions
+            os.chmod(str(outdir / run_id / 'RunParameters.xml'), 0o775)  # Fix permissions
+
+            # Make folder structure
             for f in base_folders:
                 os.makedirs(outdir / run_id / f, exist_ok=True)
 
             read_folder = outdir / run_id / 'Data' / 'Intensities' / 'BaseCalls'
             os.makedirs(read_folder, exist_ok=True)
 
-            df = read_samplesheet(samplesheet_path)
+            df = read_samplesheet(file_list[0])
             sample_id_list = get_sample_id_list(df)
             for sample_id, reads in sample_dict.items():
                 if sample_id in sample_id_list:
@@ -109,7 +123,10 @@ def cli(projectdir, outdir, miseqsim):
 
     # Delete remnant .csv files
     cleanup_csv = list(outdir.glob("*.csv"))
-    for f in cleanup_csv:
+    cleanup_xml = list(outdir.glob("*.xml"))
+    cleanup_list = cleanup_csv + cleanup_xml
+    for f in cleanup_list:
+        os.chmod(str(f), 0o775)
         os.remove(f)
 
     logging.info(f"Process complete. Results available in {outdir}")
@@ -191,7 +208,7 @@ def retrieve_logfile_dict(projectdir: Path) -> dict:
     return log_dict
 
 
-def retrieve_samplesheets(projectdir: Path, outdir: Path) -> tuple:
+def retrieve_run_files(projectdir: Path, outdir: Path) -> tuple:
     """
     Returns two dictionaries due to a poor design decision. TODO: Make this whole thing less sloppy
     :param projectdir:
@@ -202,6 +219,9 @@ def retrieve_samplesheets(projectdir: Path, outdir: Path) -> tuple:
     samplesheets = list(projectdir.glob('AppSessions.v1/*/Properties/Input.sample-sheet'))
     samplesheets = [Path(x) for x in samplesheets if ".id." not in str(x)]
 
+    # Grab RunInfo.xml and RunParameters.xml files
+    runxml_files = list(projectdir.glob('AppSessions.v1/*/Properties/Input.Runs/*/Files/Run*.xml'))
+
     if len(samplesheets) == 0:
         logging.error('ERROR: Could not find samplesheets for project. Quitting.')
         quit()
@@ -211,12 +231,25 @@ def retrieve_samplesheets(projectdir: Path, outdir: Path) -> tuple:
     run_translation_dict = dict()
     for samplesheet in samplesheets:
         verbose_run_name = samplesheet.parents[1].name
-        outname = outdir / (verbose_run_name + '.' + 'SampleSheet.csv')
-        logging.info(f'Copying SampleSheet.csv for {samplesheet.parents[1].name} to {outname}')
-        shutil.copy(str(samplesheet), str(outname))
+        samplesheet_outname = outdir / (verbose_run_name + '.' + 'SampleSheet.csv')
+        runxml_outname = outdir / (verbose_run_name + '.' + 'RunInfo.xml')
+        runparametersxml_outname = outdir / (verbose_run_name + '.' + 'RunParameters.xml')
+        runinfoxml = samplesheet.parent / 'Input.Runs' / '0' / 'Files' / 'RunInfo.xml'
+        runparametersxml = samplesheet.parent / 'Input.Runs' / '0' / 'Files' / 'RunParameters.xml'
+
+        logging.info(f'Copying SampleSheet.csv for {samplesheet.parents[1].name} to {samplesheet_outname}')
+        shutil.copy(str(samplesheet), str(samplesheet_outname))
+
+        logging.info(f'Copying RunInfo.xml for {runinfoxml} to {runxml_outname}')
+        shutil.copy(str(runinfoxml), str(runxml_outname))
+
+        logging.info(f'Copying RunParameters.xml for {runparametersxml} to {runparametersxml_outname}')
+        shutil.copy(str(runparametersxml), str(runparametersxml_outname))
+
         run_id = extract_run_name(samplesheet=samplesheet)
         run_translation_dict[verbose_run_name] = run_id
-        samplesheet_dict[run_id] = outname
+        samplesheet_dict[run_id] = [samplesheet_outname, runxml_outname, runparametersxml_outname]
+
     return samplesheet_dict, run_translation_dict
 
 
