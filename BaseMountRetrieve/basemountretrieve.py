@@ -4,9 +4,11 @@ DEV NOTE:
 This is becoming difficult to maintain and could use a complete rewrite. The 'miseqsim' flag was added as an
 afterthought, though has now become the main focus of this script. Ultimately, navigating around BaseMount is going to
 be messy, but this could still be much cleaner.
+
+Might also be worth transitioning to the V2 API (e.g. basemount --use-v2-api)
 """
 
-__version__ = "0.2.5"
+__version__ = "0.2.6"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -188,7 +190,7 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
                     shutil.copy(i, outname)
                     os.chmod(str(outname), 0o775)  # Fix permissions
                 except IsADirectoryError:
-                    logging.warning(f"WARNING: Could not copy {i} because it's a directory' ")
+                    logging.warning(f"WARNING: Could not copy {i} because it's a directory")
         else:
             if not outname.exists():
                 logging.info(f"{outname.name} already exists. Skipping.")
@@ -219,9 +221,6 @@ def retrieve_run_files(projectdir: Path, outdir: Path) -> tuple:
     samplesheets = list(projectdir.glob('AppSessions.v1/*/Properties/Input.sample-sheet'))
     samplesheets = [Path(x) for x in samplesheets if ".id." not in str(x)]
 
-    # Grab RunInfo.xml and RunParameters.xml files
-    runxml_files = list(projectdir.glob('AppSessions.v1/*/Properties/Input.Runs/*/Files/Run*.xml'))
-
     if len(samplesheets) == 0:
         logging.error('ERROR: Could not find samplesheets for project. Quitting.')
         quit()
@@ -240,11 +239,19 @@ def retrieve_run_files(projectdir: Path, outdir: Path) -> tuple:
         logging.info(f'Copying SampleSheet.csv for {samplesheet.parents[1].name} to {samplesheet_outname}')
         shutil.copy(str(samplesheet), str(samplesheet_outname))
 
-        logging.info(f'Copying RunInfo.xml for {runinfoxml} to {runxml_outname}')
-        shutil.copy(str(runinfoxml), str(runxml_outname))
+        logging.info(f'Copying RunInfo.xml for {runinfoxml} to {runxml_outname}...')
+        try:
+            shutil.copy(str(runinfoxml), str(runxml_outname))
+        except FileNotFoundError:
+            logging.warning("WARNING: Couldn't find RunInfo.xml in the expected location. Trying again...")
+            runinfoxml = samplesheet.parents[1] / 'Logs' / 'RunInfo.xml'
+            shutil.copy(str(runinfoxml), str(runxml_outname))
 
-        logging.info(f'Copying RunParameters.xml for {runparametersxml} to {runparametersxml_outname}')
-        shutil.copy(str(runparametersxml), str(runparametersxml_outname))
+        try:
+            logging.info(f'Copying RunParameters.xml for {runparametersxml} to {runparametersxml_outname}...')
+            shutil.copy(str(runparametersxml), str(runparametersxml_outname))
+        except FileNotFoundError:
+            logging.warning(f"WARNING: Could not find RunParameters.xml for {verbose_run_name}")
 
         run_id = extract_run_name(samplesheet=samplesheet)
         run_translation_dict[verbose_run_name] = run_id
