@@ -5,10 +5,10 @@ This is becoming difficult to maintain and could use a complete rewrite. The 'mi
 afterthought, though has now become the main focus of this script. Ultimately, navigating around BaseMount is going to
 be messy, but this could still be much cleaner.
 
-Might also be worth transitioning to the V2 API (e.g. basemount --use-v2-api)
+It might also be worth transitioning to the V2 API (e.g. basemount --use-v2-api).
 """
 
-__version__ = "0.2.6"
+__version__ = "0.2.7"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -93,11 +93,10 @@ def cli(projectdir, outdir, miseqsim):
             os.makedirs(outdir / run_id, exist_ok=True)
             shutil.copy(file_list[0], outdir / run_id / 'SampleSheet.csv')
             shutil.copy(file_list[1], outdir / run_id / 'RunInfo.xml')
-            shutil.copy(file_list[2], outdir / run_id / 'RunParameters.xml')
-
-            # Fix permissions on .xml files
-            os.chmod(str(outdir / run_id / 'RunInfo.xml'), 0o775)  # Fix permissions
-            os.chmod(str(outdir / run_id / 'RunParameters.xml'), 0o775)  # Fix permissions
+            try:
+                shutil.copy(file_list[2], outdir / run_id / 'RunParameters.xml')
+            except FileNotFoundError:
+                logging.warning("WARNING: Could not find RunParameters.xml. Skipping.")
 
             # Make folder structure
             for f in base_folders:
@@ -188,7 +187,7 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
                 logging.info(f"Copying {samplename}...")
                 try:
                     shutil.copy(i, outname)
-                    os.chmod(str(outname), 0o775)  # Fix permissions
+                    os.chmod(str(outname), 0o775)
                 except IsADirectoryError:
                     logging.warning(f"WARNING: Could not copy {i} because it's a directory")
         else:
@@ -238,20 +237,25 @@ def retrieve_run_files(projectdir: Path, outdir: Path) -> tuple:
 
         logging.info(f'Copying SampleSheet.csv for {samplesheet.parents[1].name} to {samplesheet_outname}')
         shutil.copy(str(samplesheet), str(samplesheet_outname))
+        os.chmod(str(samplesheet_outname), 0o775)
 
         logging.info(f'Copying RunInfo.xml for {runinfoxml} to {runxml_outname}...')
         try:
             shutil.copy(str(runinfoxml), str(runxml_outname))
+            os.chmod(str(runxml_outname), 0o775)
         except FileNotFoundError:
             logging.warning("WARNING: Couldn't find RunInfo.xml in the expected location. Trying again...")
             runinfoxml = samplesheet.parents[1] / 'Logs' / 'RunInfo.xml'
             shutil.copy(str(runinfoxml), str(runxml_outname))
+            os.chmod(str(runxml_outname), 0o775)
 
         try:
             logging.info(f'Copying RunParameters.xml for {runparametersxml} to {runparametersxml_outname}...')
             shutil.copy(str(runparametersxml), str(runparametersxml_outname))
+            os.chmod(str(runparametersxml_outname), 0o775)
         except FileNotFoundError:
-            logging.warning(f"WARNING: Could not find RunParameters.xml for {verbose_run_name}")
+            # TODO: Figure out if this file can be retrieved from somewhere else
+            logging.warning(f"WARNING: Could not find RunParameters.xml for {verbose_run_name}. Skipping.")
 
         run_id = extract_run_name(samplesheet=samplesheet)
         run_translation_dict[verbose_run_name] = run_id
