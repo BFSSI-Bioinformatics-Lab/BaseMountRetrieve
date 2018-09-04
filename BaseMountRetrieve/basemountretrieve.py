@@ -5,7 +5,7 @@ This is becoming difficult to maintain and could use a complete rewrite. The 'mi
 afterthought, though has now become the main focus of this script. Ultimately, navigating around BaseMount is going to
 be messy, but this could still be much cleaner.
 
-It might also be worth transitioning to the V2 API (e.g. basemount --use-v2-api).
+It might also be worth transitioning to the V2 API (basemount --use-v2-api).
 """
 
 __version__ = "0.2.8"
@@ -75,6 +75,7 @@ def cli(projectdir, outdir, miseqsim, verbose):
 
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+        logging.debug("Enabled VERBOSE mode")
 
     # Create output directory if it doesn't already exist
     os.makedirs(outdir, exist_ok=True)
@@ -104,11 +105,21 @@ def cli(projectdir, outdir, miseqsim, verbose):
         for run_id, file_list in samplesheet_dict.items():
             os.makedirs(outdir / run_id, exist_ok=True)
             shutil.copy(file_list[0], outdir / run_id / 'SampleSheet.csv')
-            shutil.copy(file_list[1], outdir / run_id / 'RunInfo.xml')
-            try:
-                shutil.copy(file_list[2], outdir / run_id / 'RunParameters.xml')
-            except FileNotFoundError:
-                logging.warning("WARNING: Could not find RunParameters.xml. Skipping.")
+
+            runinfo_out = outdir / run_id / 'RunInfo.xml'
+            if not os.path.exists(runinfo_out):
+                shutil.copy(file_list[1], runinfo_out)
+            else:
+                logging.debug(f"Skippging {runinfo_out} (already exists)")
+
+            runparams_out = outdir / run_id / 'RunParameters.xml'
+            if not os.path.exists(runparams_out):
+                try:
+                    shutil.copy(file_list[2], runparams_out)
+                except FileNotFoundError:
+                    logging.warning("WARNING: Could not find RunParameters.xml. Skipping.")
+            else:
+                logging.debug(f"Skipping {runparams_out} (already exists)")
 
             # Make folder structure
             for f in base_folders:
@@ -141,7 +152,6 @@ def cli(projectdir, outdir, miseqsim, verbose):
     for f in cleanup_list:
         os.chmod(str(f), 0o775)
         os.remove(f)
-
     logging.info(f"Process complete. Results available in {outdir}")
 
 
@@ -252,24 +262,30 @@ def retrieve_run_files(projectdir: Path, outdir: Path) -> tuple:
         shutil.copy(str(samplesheet), str(samplesheet_outname))
         os.chmod(str(samplesheet_outname), 0o775)
 
-        logging.info(f'Copying RunInfo.xml for {runinfoxml} to {runxml_outname}...')
-        try:
-            shutil.copy(str(runinfoxml), str(runxml_outname))
-            os.chmod(str(runxml_outname), 0o775)
-        except FileNotFoundError as e:
-            logging.warning("WARNING: Couldn't find RunInfo.xml in the expected location. Trying again...")
-            logging.error(f"TRACEBACK: {e}")
-            runinfoxml = samplesheet.parents[1] / 'Logs' / 'RunInfo.xml'
-            shutil.copy(str(runinfoxml), str(runxml_outname))
-            os.chmod(str(runxml_outname), 0o775)
+        if not os.path.exists(str(runxml_outname)):
+            logging.info(f'Copying RunInfo.xml for {runinfoxml} to {runxml_outname}...')
+            try:
+                shutil.copy(str(runinfoxml), str(runxml_outname))
+                os.chmod(str(runxml_outname), 0o775)
+            except FileNotFoundError as e:
+                logging.warning("WARNING: Couldn't find RunInfo.xml in the expected location. Trying again...")
+                logging.error(f"TRACEBACK: {e}")
+                runinfoxml = samplesheet.parents[1] / 'Logs' / 'RunInfo.xml'
+                shutil.copy(str(runinfoxml), str(runxml_outname))
+                os.chmod(str(runxml_outname), 0o775)
+        else:
+            logging.debug(f"Skipping {runxml_outname} (already exists)")
 
-        try:
-            logging.info(f'Copying RunParameters.xml for {runparametersxml} to {runparametersxml_outname}...')
-            shutil.copy(str(runparametersxml), str(runparametersxml_outname))
-            os.chmod(str(runparametersxml_outname), 0o775)
-        except FileNotFoundError:
-            # TODO: Figure out if this file can be retrieved from somewhere else
-            logging.warning(f"WARNING: Could not find RunParameters.xml for {verbose_run_name}. Skipping.")
+        if not os.path.exists(str(runparametersxml_outname)):
+            try:
+                logging.info(f'Copying RunParameters.xml for {runparametersxml} to {runparametersxml_outname}...')
+                shutil.copy(str(runparametersxml), str(runparametersxml_outname))
+                os.chmod(str(runparametersxml_outname), 0o775)
+            except FileNotFoundError:
+                # TODO: Figure out if this file can be retrieved from somewhere else
+                logging.warning(f"WARNING: Could not find RunParameters.xml for {verbose_run_name}. Skipping.")
+        else:
+            logging.debug(f"Skipping {runparametersxml_outname} (already exists)")
 
         run_id = extract_run_name(samplesheet=samplesheet)
         run_translation_dict[verbose_run_name] = run_id
@@ -361,7 +377,7 @@ def retrieve_interop(run_id: str, projectdir: Path, outdir: Path):
     for f in interop_folder_contents:
         outname = outdir / run_id / 'InterOp' / f.name
         if outname.exists():
-            logging.debug(f"Skipping {outname.name} for {run_id}")
+            logging.debug(f"Skipping {outname.name} for {run_id} (already exists)")
         else:
             logging.info(f"Copying {f}...")
             shutil.copy(src=f, dst=outname)
