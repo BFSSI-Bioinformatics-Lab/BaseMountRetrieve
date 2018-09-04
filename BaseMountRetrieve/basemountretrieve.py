@@ -71,7 +71,7 @@ def convert_to_path(ctx, param, value):
               callback=print_version,
               expose_value=False)
 def cli(projectdir, outdir, miseqsim, verbose):
-    logging.info(f"Started BaseMountRetrieve ({__version__})")
+    logging.info(f"Started BaseMountRetrieve (v{__version__})")
 
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
