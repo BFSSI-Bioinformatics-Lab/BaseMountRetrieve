@@ -8,7 +8,7 @@ be messy, but this could still be much cleaner.
 It might also be worth transitioning to the V2 API (e.g. basemount --use-v2-api).
 """
 
-__version__ = "0.2.7"
+__version__ = "0.2.8"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -56,8 +56,12 @@ def convert_to_path(ctx, param, value):
               help='Directory to dump all .fastq.gz files. Note that the Sample ID will be appended to the beginning '
                    'of the copied .fastq.gz file, which normally only contains the Sample Name.',
               callback=convert_to_path)
-@click.option('--miseqsim',
+@click.option('-m', '--miseqsim',
               help='Specify this flag to simulate the MiSeq folder structure when retrieving from BaseSpace',
+              is_flag=True,
+              default=False)
+@click.option('-v', '--verbose',
+              help='Specify this flag to enable more verbose output.',
               is_flag=True,
               default=False)
 @click.option('--version',
@@ -66,8 +70,11 @@ def convert_to_path(ctx, param, value):
               is_eager=True,
               callback=print_version,
               expose_value=False)
-def cli(projectdir, outdir, miseqsim):
-    logging.info("Started BaseMountRetrieve")
+def cli(projectdir, outdir, miseqsim, verbose):
+    logging.info(f"Started BaseMountRetrieve ({__version__})")
+
+    if verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     # Create output directory if it doesn't already exist
     os.makedirs(outdir, exist_ok=True)
@@ -82,6 +89,11 @@ def cli(projectdir, outdir, miseqsim):
     if miseqsim:
         logfile_dict = retrieve_logfile_dict(projectdir)
         sample_dict = get_sample_dictionary(outdir)
+
+        logging.debug("SAMPLE DICTIONARY:")
+        for sample_id, reads in sample_dict.items():
+            logging.debug(f"{sample_id}:\t{reads}")
+
         base_folders = ['Config',
                         'Data',
                         'Images',
@@ -122,7 +134,7 @@ def cli(projectdir, outdir, miseqsim):
 
             retrieve_interop(run_id=run_id, projectdir=projectdir, outdir=outdir)
 
-    # Delete remnant .csv files
+    # Delete remnant .csv + .xml files
     cleanup_csv = list(outdir.glob("*.csv"))
     cleanup_xml = list(outdir.glob("*.xml"))
     cleanup_list = cleanup_csv + cleanup_xml
@@ -166,7 +178,7 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
             if outname.name not in str(j):
                 transfer_list.append(i)
             else:
-                logging.info(f"Skipping {i.name}")
+                logging.debug(f"Skipping {i.name} (already exists)")
 
     # Begin copying files
     for i in sorted(set(transfer_list)):
@@ -183,7 +195,7 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
         if miseqsim:
             outdir_file_names = [x.name for x in outdir_files]
             tmp_name = sampleid + '_' + i.name
-            if not tmp_name in outdir_file_names:
+            if tmp_name not in outdir_file_names:
                 logging.info(f"Copying {samplename}...")
                 try:
                     shutil.copy(i, outname)
@@ -192,7 +204,7 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
                     logging.warning(f"WARNING: Could not copy {i} because it's a directory")
         else:
             if not outname.exists():
-                logging.info(f"{outname.name} already exists. Skipping.")
+                logging.debug(f"Skipping {outname.name} (already exists)")
             else:
                 logging.info(f"Copying {samplename}...")
                 shutil.copy(i, outname)  # shutil.copy is filesystem agnostic, unlike shutil.move, os.rename
@@ -220,6 +232,7 @@ def retrieve_run_files(projectdir: Path, outdir: Path) -> tuple:
     samplesheets = list(projectdir.glob('AppSessions.v1/*/Properties/Input.sample-sheet'))
     samplesheets = [Path(x) for x in samplesheets if ".id." not in str(x)]
 
+    logging.debug(f"Found {len(samplesheets)} samplesheets")
     if len(samplesheets) == 0:
         logging.error('ERROR: Could not find samplesheets for project. Quitting.')
         quit()
@@ -243,8 +256,9 @@ def retrieve_run_files(projectdir: Path, outdir: Path) -> tuple:
         try:
             shutil.copy(str(runinfoxml), str(runxml_outname))
             os.chmod(str(runxml_outname), 0o775)
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             logging.warning("WARNING: Couldn't find RunInfo.xml in the expected location. Trying again...")
+            logging.error(f"TRACEBACK: {e}")
             runinfoxml = samplesheet.parents[1] / 'Logs' / 'RunInfo.xml'
             shutil.copy(str(runinfoxml), str(runxml_outname))
             os.chmod(str(runxml_outname), 0o775)
@@ -338,22 +352,24 @@ def retrieve_interop(run_id: str, projectdir: Path, outdir: Path):
     logging.info(f"Copying InterOp folder contents for {run_id}...")
     try:
         interop_folder = projectdir.parents[1] / 'Runs' / run_id / 'Files' / 'InterOp'
-    except:
+    except Exception as e:
         logging.error("ERROR: Couldn't retrieve InterOp contents.")
+        logging.error(f"TRACEBACK: {e}")
         return
 
     interop_folder_contents = list(interop_folder.glob("*"))
     for f in interop_folder_contents:
         outname = outdir / run_id / 'InterOp' / f.name
         if outname.exists():
-            logging.info(f"Skipping {outname.name} for {run_id}")
+            logging.debug(f"Skipping {outname.name} for {run_id}")
         else:
             logging.info(f"Copying {f}...")
             shutil.copy(src=f, dst=outname)
             try:
                 os.chmod(str(outname), 0o775)
-            except PermissionError:
-                pass
+            except PermissionError as e:
+                logging.error(f"ERROR: Could not change permissions for {outname}")
+                logging.error(f"TRACEBACK: {e}")
 
 
 def extract_run_name(samplesheet: Path) -> str:
@@ -366,6 +382,7 @@ def extract_run_name(samplesheet: Path) -> str:
         for line in f:
             if 'Experiment Name' in line:
                 experiment_name = line.split(',')[1].strip()
+                logging.debug(f"Detected the following experiment name: {experiment_name}")
                 return experiment_name
         else:
             raise Exception(f"Could not find 'Experiment Name' in {samplesheet}")
@@ -396,8 +413,8 @@ def retrieve_sampleids(fastq_file_list: [Path]) -> list:
     return sample_id_list
 
 
-def get_readpair(sample_id: str, fastq_file_list: [Path], forward_id: str = "_R1",
-                 reverse_id: str = "_R2") -> (list, None):
+def get_readpair(sample_id: str, fastq_file_list: [Path], forward_id: str = "_R1", reverse_id: str = "_R2") -> (list,
+                                                                                                                None):
     """
     :param sample_id: String of sample ID
     :param fastq_file_list: List of fastq.gz file paths generated by retrieve_fastqgz()
@@ -416,7 +433,7 @@ def get_readpair(sample_id: str, fastq_file_list: [Path], forward_id: str = "_R1
     if r1 is not None and r2 is not None:
         return [r1, r2]
     else:
-        logging.info('Could not pair {}'.format(sample_id))
+        logging.warning('WARNING: Could not pair {}'.format(sample_id))
         return None
 
 
