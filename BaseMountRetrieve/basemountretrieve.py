@@ -110,7 +110,7 @@ def cli(projectdir, outdir, miseqsim, verbose):
             if not os.path.exists(runinfo_out):
                 shutil.copy(file_list[1], runinfo_out)
             else:
-                logging.debug(f"Skippging {runinfo_out} (already exists)")
+                logging.debug(f"Skipping {runinfo_out} (already exists)")
 
             runparams_out = outdir / run_id / 'RunParameters.xml'
             if not os.path.exists(runparams_out):
