@@ -6,6 +6,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="BaseMountRetrieve",
+    install_requires=['click', 'pandas', 'numpy'],
     version=__version__,
     author=__author__,
     author_email=__email__,
@@ -14,6 +15,5 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/bfssi-forest-dussault/BaseMountRetrieve",
     packages=setuptools.find_packages(),
-    scripts=['BaseMountRetrieve/basemountretrieve.py'],
-    install_requires=['click', 'pandas', 'numpy']
+    scripts=['BaseMountRetrieve/basemountretrieve.py']
 )

@@ -8,7 +8,7 @@ be messy, but this could still be much cleaner.
 It might also be worth transitioning to the V2 API (basemount --use-v2-api).
 """
 
-__version__ = "0.2.8"
+__version__ = "0.2.9"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -143,7 +143,8 @@ def cli(projectdir, outdir, miseqsim, verbose):
                         shutil.copy(src=logfile, dst=outname)
                         os.chmod(str(outname), 0o775)  # Fix permissions
 
-            retrieve_interop(run_id=run_id, projectdir=projectdir, outdir=outdir)
+            interop_folder_contents = retrieve_interop_contents(run_id=run_id, projectdir=projectdir)
+            copy_interop_folder_contents(run_id=run_id, interop_folder_contents=interop_folder_contents, outdir=outdir)
 
     # Delete remnant .csv + .xml files
     cleanup_csv = list(outdir.glob("*.csv"))
@@ -364,8 +365,7 @@ def group_by_project(samplesheet_df: pd.DataFrame) -> dict:
     return project_dict
 
 
-def retrieve_interop(run_id: str, projectdir: Path, outdir: Path):
-    logging.info(f"Copying InterOp folder contents for {run_id}...")
+def retrieve_interop_contents(run_id: str, projectdir: Path):
     try:
         interop_folder = projectdir.parents[1] / 'Runs' / run_id / 'Files' / 'InterOp'
     except Exception as e:
@@ -374,6 +374,11 @@ def retrieve_interop(run_id: str, projectdir: Path, outdir: Path):
         return
 
     interop_folder_contents = list(interop_folder.glob("*"))
+    return interop_folder_contents
+
+
+def copy_interop_folder_contents(run_id: str, interop_folder_contents: list, outdir: Path):
+    logging.info(f"Copying InterOp folder contents for {run_id}...")
     for f in interop_folder_contents:
         outname = outdir / run_id / 'InterOp' / f.name
         if outname.exists():
