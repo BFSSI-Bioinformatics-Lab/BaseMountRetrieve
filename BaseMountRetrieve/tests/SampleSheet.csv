@@ -1,0 +1,28 @@
+[Header],,,,,,,,,
+IEMFileVersion,5,,,,,,,,
+Investigator Name,Admin,,,,,,,,
+Experiment Name,test_run_name,,,,,,,,
+Date,7/9/2018,,,,,,,,
+Workflow,GenerateFASTQ,,,,,,,,
+Application,FASTQ Only,,,,,,,,
+Instrument Type,MiSeq,,,,,,,,
+Assay,Nextera XT,,,,,,,,
+Index Adapters,"Nextera XT Index Kit (96 Indexes, 384 Samples)",,,,,,,,
+Description,20180709_WGS_M01308,,,,,,,,
+Chemistry,Amplicon,,,,,,,,
+[Reads],,,,,,,,,
+301,,,,,,,,,
+301,,,,,,,,,
+,,,,,,,,,
+[Settings],,,,,,,,,
+ReverseComplement,0,,,,,,,,
+Adapter,CTGTCTCTTATACACATCT,,,,,,,,
+,,,,,,,,,
+[Data],,,,,,,,,
+Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,I5_Index_ID,index2,Sample_Project,Description
+SAMPLE-ID-01,test_samplename_01,20180706NexteraXT_4nM_Libs_DLAZ,A1,N701,TAAGGCGA,S505,GTAAGGAG,test_project,test_description
+SAMPLE-ID-02,test_samplename_02,20180706NexteraXT_4nM_Libs_DLAZ,A2,N702,CGTACTAG,S505,GTAAGGAG,test_project,test_description
+SAMPLE-ID-03,test_samplename_03,20180706NexteraXT_4nM_Libs_DLAZ,A3,N703,AGGCAGAA,S505,GTAAGGAG,test_project,test_description
+SAMPLE-ID-04,test_samplename_04,20180706NexteraXT_4nM_Libs_DLAZ,A4,N704,TCCTGAGC,S505,GTAAGGAG,test_project,test_description
+SAMPLE-ID-05,test_samplename_05,20180706NexteraXT_4nM_Libs_DLAZ,A5,N705,GGACTCCT,S505,GTAAGGAG,test_project,test_description
+SAMPLE-ID-06,test_samplename_06,20180706NexteraXT_4nM_Libs_DLAZ,A6,N706,TAGGCATG,S505,GTAAGGAG,test_project,test_description
