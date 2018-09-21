@@ -8,7 +8,7 @@ be messy, but this could still be much cleaner.
 It might also be worth transitioning to the V2 API (basemount --use-v2-api).
 """
 
-__version__ = "0.2.9"
+__version__ = "0.3.0"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -263,6 +263,7 @@ def retrieve_run_files(projectdir: Path, outdir: Path) -> tuple:
         shutil.copy(str(samplesheet), str(samplesheet_outname))
         os.chmod(str(samplesheet_outname), 0o775)
 
+        breakout = False
         if not os.path.exists(str(runxml_outname)):
             logging.info(f'Copying RunInfo.xml for {runinfoxml} to {runxml_outname}...')
             try:
@@ -271,11 +272,18 @@ def retrieve_run_files(projectdir: Path, outdir: Path) -> tuple:
             except FileNotFoundError as e:
                 logging.warning("WARNING: Couldn't find RunInfo.xml in the expected location. Trying again...")
                 logging.error(f"TRACEBACK: {e}")
-                runinfoxml = samplesheet.parents[1] / 'Logs' / 'RunInfo.xml'
-                shutil.copy(str(runinfoxml), str(runxml_outname))
-                os.chmod(str(runxml_outname), 0o775)
+                try:
+                    runinfoxml = samplesheet.parents[1] / 'Logs' / 'RunInfo.xml'
+                    shutil.copy(str(runinfoxml), str(runxml_outname))
+                    os.chmod(str(runxml_outname), 0o775)
+                except FileNotFoundError:
+                    logging.warning(f"WARNING: {verbose_run_name} is missing critical files and will be skipped")
+                    breakout = True
         else:
             logging.debug(f"Skipping {runxml_outname} (already exists)")
+
+        if breakout:
+            break
 
         if not os.path.exists(str(runparametersxml_outname)):
             try:
