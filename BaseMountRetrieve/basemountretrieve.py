@@ -8,7 +8,7 @@ be messy, but this could still be much cleaner.
 It might also be worth transitioning to the V2 API (basemount --use-v2-api).
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -162,6 +162,9 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
 
     # Filter out hidden stuff
     fastq_list = [Path(x) for x in fastq_list if ".id." not in str(x)]
+
+    # Filter out duplicated samples.
+    fastq_list = [Path(x) for x in fastq_list if ' (2)_' not in x.name]
 
     # Prepare to copy files
     transfer_list = []
