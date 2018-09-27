@@ -8,7 +8,7 @@ be messy, but this could still be much cleaner.
 It might also be worth transitioning to the V2 API (basemount --use-v2-api).
 """
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -163,28 +163,28 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
     # Filter out hidden stuff, coerce to Path
     fastq_list = [Path(x) for x in fastq_list if ".id." not in str(x)]
 
-    # Filter out duplicated samples.
-    fastq_list = [x for x in fastq_list if ' (2)' not in x.name]
+    # Filter out duplicated samples. Primitive way of checking for " (2)" or " (3)". Definitely a better way to do this.
+    fastq_list = [x for x in fastq_list if ' (' not in x.parents[1].name]
 
-    # Prepare to copy files
+    # This list stores all files to be copied from Basemount to the outdir
     transfer_list = []
 
+    # Check to see if files already exist in the outdir
     if not miseqsim:
-        outdir_files = list(outdir.glob('*'))
+        outdir_files = list(outdir.glob('*.fastq.gz'))
     else:
-        outdir_files = list(outdir.glob('*/Data/Intensities/BaseCalls/*'))
+        outdir_files = list(outdir.glob('*/Data/Intensities/BaseCalls/*.fastq.gz'))
+
+    # If the outdir is empty, we want to transfer all detected valid .fastq files
     if len(outdir_files) == 0:
         transfer_list = fastq_list
-
-    # Filter out duplicates again
-    outdir_files = [Path(x) for x in outdir_files if ' (2)' not in Path(x).name]
 
     for i in fastq_list:
         # Get name components of sample
         sampleid = i.parents[1].name
         samplename = i.name
 
-        # Prepare outfile names
+        # Prepare outfile names, append BMH sample_id if it's not already in the filename
         if sampleid not in samplename:
             outname = outdir / Path(sampleid + "_" + samplename)
         else:
