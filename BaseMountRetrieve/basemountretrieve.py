@@ -8,7 +8,7 @@ be messy, but this could still be much cleaner.
 It might also be worth transitioning to the V2 API (basemount --use-v2-api).
 """
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -160,11 +160,11 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
     # Gather all BaseMount file paths
     fastq_list = list(projectdir.glob("Samples/*/Files/*"))
 
-    # Filter out hidden stuff
+    # Filter out hidden stuff, coerce to Path
     fastq_list = [Path(x) for x in fastq_list if ".id." not in str(x)]
 
     # Filter out duplicated samples.
-    fastq_list = [Path(x) for x in fastq_list if ' (2)' not in x.name]
+    fastq_list = [x for x in fastq_list if ' (2)' not in x.name]
 
     # Prepare to copy files
     transfer_list = []
@@ -175,6 +175,9 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
         outdir_files = list(outdir.glob('*/Data/Intensities/BaseCalls/*'))
     if len(outdir_files) == 0:
         transfer_list = fastq_list
+
+    # Filter out duplicates again
+    outdir_files = [Path(x) for x in outdir_files if ' (2)' not in Path(x).name]
 
     for i in fastq_list:
         # Get name components of sample
