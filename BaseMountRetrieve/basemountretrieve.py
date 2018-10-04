@@ -8,7 +8,7 @@ be messy, but this could still be much cleaner.
 It might also be worth transitioning to the V2 API (basemount --use-v2-api).
 """
 
-__version__ = "0.3.4"
+__version__ = "0.3.5"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -81,7 +81,8 @@ def cli(projectdir, outdir, miseqsim, verbose):
     os.makedirs(outdir, exist_ok=True)
 
     # Get samplesheets
-    samplesheet_dict, run_translation_dict = retrieve_run_files(projectdir=projectdir, outdir=outdir)
+    if miseqsim:
+        samplesheet_dict, run_translation_dict = retrieve_run_files(projectdir=projectdir, outdir=outdir)
 
     # Get list of samples to transfer, download files
     retrieve_samples(projectdir=projectdir, outdir=outdir, miseqsim=miseqsim)
@@ -165,6 +166,14 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
 
     # Filter out duplicated samples. Primitive way of checking for " (2)" or " (3)". Definitely a better way to do this.
     fastq_list = [x for x in fastq_list if ' (' not in x.parents[1].name]
+
+    # Try to search in another location for *.fastq.gz if files couldn't be located
+    if len(fastq_list) == 0:
+        fastq_list = list(projectdir.glob("AppSessions.v1/*/Sample*/Files/*"))
+        fastq_list = [Path(x) for x in fastq_list if ".id." not in str(x)]
+        fastq_list = [x for x in fastq_list if ' (' not in x.parents[1].name]
+
+    logging.info(f"Detected {len(fastq_list)} FASTQ files")
 
     # This list stores all files to be copied from Basemount to the outdir
     transfer_list = []
