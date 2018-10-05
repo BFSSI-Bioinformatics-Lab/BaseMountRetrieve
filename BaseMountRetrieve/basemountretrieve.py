@@ -8,7 +8,7 @@ be messy, but this could still be much cleaner.
 It might also be worth transitioning to the V2 API (basemount --use-v2-api).
 """
 
-__version__ = "0.3.5"
+__version__ = "0.3.6"
 __author__ = "Forest Dussault"
 __email__ = "forest.dussault@canada.ca"
 
@@ -81,6 +81,8 @@ def cli(projectdir, outdir, miseqsim, verbose):
     os.makedirs(outdir, exist_ok=True)
 
     # Get samplesheets
+    samplesheet_dict = {}
+    run_translation_dict = {}
     if miseqsim:
         samplesheet_dict, run_translation_dict = retrieve_run_files(projectdir=projectdir, outdir=outdir)
 
@@ -229,7 +231,7 @@ def retrieve_samples(projectdir: Path, outdir: Path, miseqsim: bool):
                 except IsADirectoryError:
                     logging.warning(f"WARNING: Could not copy {i} because it's a directory")
         else:
-            if not outname.exists():
+            if outname.exists():
                 logging.debug(f"Skipping {outname.name} (already exists)")
             else:
                 logging.info(f"Copying {samplename}...")
