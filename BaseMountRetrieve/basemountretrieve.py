@@ -8,16 +8,13 @@ be messy, but this could still be much cleaner.
 It might also be worth transitioning to the V2 API (basemount --use-v2-api).
 """
 
-__version__ = "0.3.6"
-__author__ = "Forest Dussault"
-__email__ = "forest.dussault@canada.ca"
-
 import os
 import click
 import shutil
 import logging
 import pandas as pd
 from pathlib import Path
+from BaseMountRetrieve.__init__ import __version__, __author__, __email__
 
 script = os.path.basename(__file__)
 logger = logging.getLogger()
@@ -150,12 +147,13 @@ def cli(projectdir, outdir, miseqsim, verbose):
             copy_interop_folder_contents(run_id=run_id, interop_folder_contents=interop_folder_contents, outdir=outdir)
 
     # Delete remnant .csv + .xml files
-    cleanup_csv = list(outdir.glob("*.csv"))
-    cleanup_xml = list(outdir.glob("*.xml"))
-    cleanup_list = cleanup_csv + cleanup_xml
-    for f in cleanup_list:
-        os.chmod(str(f), 0o775)
-        os.remove(f)
+    if miseqsim:
+        cleanup_csv = list(outdir.glob("*.csv"))
+        cleanup_xml = list(outdir.glob("*.xml"))
+        cleanup_list = cleanup_csv + cleanup_xml
+        for f in cleanup_list:
+            os.chmod(str(f), 0o775)
+            os.remove(f)
     logging.info(f"Process complete. Results available in {outdir}")
 
 
