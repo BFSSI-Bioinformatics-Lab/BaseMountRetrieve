@@ -9,7 +9,7 @@ Internal BFSSI package for retrieving files from BaseMount.
 `pip install basemountretrieve`
 
 ### Usage
-```bash
+```
 Usage: basemountretrieve [OPTIONS]
 
 Options:
