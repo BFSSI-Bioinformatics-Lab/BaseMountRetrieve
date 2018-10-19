@@ -8,7 +8,7 @@ Internal BFSSI package for retrieving files from BaseMount.
 
 ### Usage
 ```bash
-Usage: basemountretrieve.py [OPTIONS]
+Usage: basemountretrieve [OPTIONS]
 
 Options:
   -p, --projectdir PATH  Path to the directory on BaseMount for a particular
