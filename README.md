@@ -5,6 +5,8 @@ Internal BFSSI package for retrieving files from BaseMount.
 - [BaseMount](https://basemount.basespace.illumina.com/)
 - Python 3.6
 
+### Installation
+`pip install basemountretrieve`
 
 ### Usage
 ```bash
