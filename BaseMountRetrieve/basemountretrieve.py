@@ -107,13 +107,13 @@ def cli(projectdir, outdir, miseqsim, verbose):
             shutil.copy(file_list[0], outdir / run_id / 'SampleSheet.csv')
 
             runinfo_out = outdir / run_id / 'RunInfo.xml'
-            if not os.path.exists(runinfo_out):
+            if not runinfo_out.exists():
                 shutil.copy(file_list[1], runinfo_out)
             else:
                 logging.debug(f"Skipping {runinfo_out} (already exists)")
 
             runparams_out = outdir / run_id / 'RunParameters.xml'
-            if not os.path.exists(runparams_out):
+            if not runparams_out.exists():
                 try:
                     shutil.copy(file_list[2], runparams_out)
                 except FileNotFoundError:
@@ -279,7 +279,7 @@ def retrieve_run_files(projectdir: Path, outdir: Path) -> tuple:
         os.chmod(str(samplesheet_outname), 0o775)
 
         breakout = False
-        if not os.path.exists(str(runxml_outname)):
+        if not runxml_outname.exists():
             logging.info(f'Copying RunInfo.xml for {runinfoxml} to {runxml_outname}...')
             try:
                 shutil.copy(str(runinfoxml), str(runxml_outname))
@@ -300,7 +300,7 @@ def retrieve_run_files(projectdir: Path, outdir: Path) -> tuple:
         if breakout:
             break
 
-        if not os.path.exists(str(runparametersxml_outname)):
+        if not runparametersxml_outname.exists():
             try:
                 logging.info(f'Copying RunParameters.xml for {runparametersxml} to {runparametersxml_outname}...')
                 shutil.copy(str(runparametersxml), str(runparametersxml_outname))
@@ -406,7 +406,7 @@ def copy_interop_folder_contents(run_id: str, interop_folder_contents: list, out
         outname = outdir / run_id / 'InterOp' / f.name
         if outname.exists():
             logging.debug(f"Skipping {outname.name} for {run_id} (already exists)")
-        else:
+        elif not f.is_dir() and f.is_file():
             logging.info(f"Copying {f}...")
             shutil.copy(src=f, dst=outname)
             try:
@@ -414,6 +414,8 @@ def copy_interop_folder_contents(run_id: str, interop_folder_contents: list, out
             except PermissionError as e:
                 logging.error(f"ERROR: Could not change permissions for {outname}")
                 logging.error(f"TRACEBACK: {e}")
+        else:
+            logging.debug(f"Skipping {f}")
 
 
 def extract_run_name(samplesheet: Path) -> str:
