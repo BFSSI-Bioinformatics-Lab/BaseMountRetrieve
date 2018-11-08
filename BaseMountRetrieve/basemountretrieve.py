@@ -132,8 +132,11 @@ def cli(projectdir, outdir, miseqsim, verbose):
             sample_id_list = get_sample_id_list(df)
             for sample_id, reads in sample_dict.items():
                 if sample_id in sample_id_list:
-                    shutil.move(reads[0], read_folder / reads[0].name)
-                    shutil.move(reads[1], read_folder / reads[1].name)
+                    try:
+                        shutil.move(reads[0], read_folder / reads[0].name)
+                        shutil.move(reads[1], read_folder / reads[1].name)
+                    except FileNotFoundError:
+                        logging.warning(f"Could not move {reads}. Skipping.")
 
             # Copy all the log files over to the 'Logs' folder
             for verbose_run_name, log_list in logfile_dict.items():
@@ -298,7 +301,7 @@ def retrieve_run_files(projectdir: Path, outdir: Path) -> tuple:
             logging.debug(f"Skipping {runxml_outname} (already exists)")
 
         if breakout:
-            break
+            continue
 
         if not runparametersxml_outname.exists():
             try:
