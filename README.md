@@ -1,6 +1,31 @@
 # BaseMountRetrieve
 Package for retrieving files from BaseMount in the output style of a local MiSeq run.
 
+### Output Directory Sample
+```
+Project
+├── 20180714_WGS_M01308
+│   ├── Config
+│   ├── Data
+│   │   └── Intensities
+│   │       └── BaseCalls
+│   ├── Images
+│   ├── InterOp
+│   ├── Logs
+│   ├── Recipes
+│   └── Thumbnail_Images
+└── 20181102_WGS_M01308
+    ├── Config
+    ├── Data
+    │   └── Intensities
+    │       └── BaseCalls
+    ├── Images
+    ├── InterOp
+    ├── Logs
+    ├── Recipes
+    └── Thumbnail_Images
+```
+
 ### Requirements
 - [BaseMount](https://basemount.basespace.illumina.com/)
 - Python 3.6
