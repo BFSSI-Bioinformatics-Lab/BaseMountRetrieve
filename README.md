@@ -27,7 +27,7 @@ Project
 ```
 
 ### Requirements
-- [BaseMount](https://basemount.basespace.illumina.com/)
+- [BaseMount](https://basemount.basespace.illumina.com/) (Confirmed supported version: Illumina BaseMount v0.15.96.2154)
 - Python 3.6
 
 ### Installation
