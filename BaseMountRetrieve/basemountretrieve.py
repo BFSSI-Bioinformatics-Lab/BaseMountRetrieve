@@ -32,6 +32,9 @@ def convert_to_path(ctx, param, value):
 
 @dataclass
 class BaseMountSample:
+    """
+    Dataclass to store data for a Sample from BaseMount (sample_id, R1, R2)
+    """
     project_dir: Path
     run_dir: Path
     sample_dir: Path  # ~/basemount/Projects/PRJ1/Samples/SAMPLE1
@@ -53,12 +56,18 @@ class BaseMountSample:
         self.r2 = r2
 
     def get_reads(self) -> tuple:
+        """
+        Grabs fwd and rev reads from the Files/ directory
+        """
         r1 = list(self.fastq_dir.glob("*_R1_*"))[0]
         r2 = list(self.fastq_dir.glob("*_R2_*"))[0]
         return r1, r2
 
     @staticmethod
     def validate_fastq_in_sample_dir(fastq_dir: Path):
+        """
+        Validates fwd and rev reads are present in the Files/ directory
+        """
         r1 = list(fastq_dir.glob("*_R1_*"))
         r2 = list(fastq_dir.glob("*_R2_*"))
         assert len(r1) == 1
@@ -69,6 +78,9 @@ class BaseMountSample:
 
 @dataclass
 class BaseMountRun:
+    """
+    Dataclass to store data for a Run from BaseMount
+    """
     run_dir: Path
     project_dir: Path
 
@@ -105,17 +117,26 @@ class BaseMountRun:
         self.logfiles = self.get_log_files()
 
     def get_interop_files(self) -> [Path]:
+        """
+        Collects all files in the InterOp/ directory and filters out any junk (directories, hidden files)
+        """
         interop_files = list(self.interop_dir.glob("*"))
         interop_files = [f for f in interop_files if f.is_file()]
         interop_files = [f for f in interop_files if not f.name.startswith(".")]
         return interop_files
 
     def get_log_files(self) -> [Path]:
+        """
+        Collects all files in the Logs/ directory and filters out hidden files
+        """
         logfiles = list(self.log_dir.glob("*"))
         logfiles = [f for f in logfiles if not f.name.startswith(".")]
         return logfiles
 
     def get_interop_dir(self) -> Path:
+        """
+        Collects and verifies the InterOp directory for a particular Run
+        """
         interop_dir = self.project_dir.parents[1] / 'Runs' / self.run_name / 'Files' / 'InterOp'
         if not interop_dir.is_dir():
             logging.warning(
@@ -123,7 +144,10 @@ class BaseMountRun:
             interop_dir = None
         return interop_dir
 
-    def get_sample_id_dict(self):
+    def get_sample_id_dict(self) -> dict:
+        """
+        Extracts the Sample IDs from a BaseMount run directory, creates a dict containing Sample_ID:Sample_dir links
+        """
         sample_id_dict = {}
         for sample_dir in self.sample_dirs:
             sample_id = sample_dir.name.split(".", 2)[2]
@@ -131,13 +155,19 @@ class BaseMountRun:
         return sample_id_dict
 
     def get_samplesheet(self) -> Path:
+        """
+        Grabs and verifies the SampleSheet for a Run
+        """
         samplesheet = self.properties_dir / "Input.sample-sheet"
         if samplesheet.is_file():
             return samplesheet
         else:
             raise FileNotFoundError(f"Could not find SampleSheet at expected location: {samplesheet}")
 
-    def generate_sample_objects(self):
+    def generate_sample_objects(self) -> [BaseMountSample]:
+        """
+        Generates a list of BaseMountSample data objects belonging to the respective Run
+        """
         logging.debug(f"Generating BaseMountSample objects for {self.run_name}")
         sample_object_list = []
         for sample_id, sample_dir in self.sample_id_dict.items():
@@ -149,6 +179,9 @@ class BaseMountRun:
         return sample_object_list
 
     def get_sample_dirs(self) -> list:
+        """
+        Grabs all Samples directories for the Run, filters out junk
+        """
         sample_dirs = list(self.run_dir.glob("Sample.*"))
 
         # Filter out junk
@@ -158,7 +191,10 @@ class BaseMountRun:
         return sample_dirs
 
     def get_runparametersxml(self) -> Path:
+        """
         # TODO: Check if this file exists anywhere else on BaseMount
+        Tries to grab the RunParameters.xml file if its present in the expected location
+        """
         runparametersxml = self.properties_dir / 'Input.Runs' / '0' / 'Files' / 'RunParameters.xml'
         if not runparametersxml.is_file():
             logging.warning(f"Could not locate RunParameters.xml for {self.run_name}")
@@ -167,6 +203,10 @@ class BaseMountRun:
             return runparametersxml
 
     def get_runinfoxml(self) -> Path:
+        """
+        Grabs the RunInfo.xml file
+        """
+
         # Try to find RunInfo.xml in both known locations
         runinfoxml_1 = self.properties_dir / 'Input.Runs' / '0' / 'Files' / 'RunInfo.xml'
         runinfoxml_2 = self.run_dir / 'Logs' / 'RunInfo.xml'
@@ -216,6 +256,9 @@ class BaseMountRun:
 
 @dataclass
 class BaseMountProject:
+    """
+    Dataclass to store data for a Project from BaseMount
+    """
     project_dir: Path
 
     def __post_init__(self):
@@ -225,18 +268,28 @@ class BaseMountProject:
         self.run_objects = self.generate_run_objects()
 
     def generate_run_objects(self) -> [BaseMountRun]:
+        """
+        Generates a list of BaseMountRun data objects belonging to this Project
+        """
         run_object_list = []
         for run_dir in self.run_dirs:
             run_object = BaseMountRun(run_dir=run_dir, project_dir=self.project_dir)
             run_object_list.append(run_object)
         return run_object_list
 
-    def get_runs_dirs(self):
+    def get_runs_dirs(self) -> list:
+        """
+        Grabs all valid Run directories
+        """
         run_dirs = list(self.appsessions.glob('FASTQ*'))
         return run_dirs
 
 
 def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path):
+    """
+    Main method to analyze BaseMount folder contents, establish dataclasses (Project, Run, Sample), and copy to out_dir
+    """
+
     # Create output directory if it doesn't already exist
     out_dir.mkdir(exist_ok=True)
 
@@ -249,12 +302,13 @@ def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path):
 
         # Check if outdir already exists, skip if it does
         if run_dir_out.exists():
-            logging.debug(f"Run directory for {run_obj.run_name} already exists, skipping")
+            logging.info(f"Run directory for {run_obj.run_name} already exists, skipping")
             continue
 
         create_run_folder_skeleton(out_dir=run_dir_out)
 
         # Copy run metadata over to outdir folder
+        logging.debug(f"Copying metadata for {run_obj.run_name}")
         shutil.copy(str(run_obj.samplesheet), str(run_dir_out / 'SampleSheet.csv'))
         shutil.copy(str(run_obj.runinfoxml), str(run_dir_out / 'RunInfo.xml'))
         os.chmod(str(run_dir_out / 'RunInfo.xml'), 0o775)
@@ -263,11 +317,13 @@ def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path):
             os.chmod(str(run_dir_out / 'RunParameters.xml'), 0o775)
 
         # Copy log files
+        logging.debug(f"Copying log file contents for {run_obj.run_name}")
         for logfile in run_obj.logfiles:
             shutil.copy(str(logfile), str(run_dir_out / 'Logs' / logfile.name))
             os.chmod(str(run_dir_out / 'Logs' / logfile.name), 0o775)
 
         # Copy InterOp contents
+        logging.debug(f"Copying InterOp contents for {run_obj.run_name}")
         for interop_file in run_obj.interop_files:
             interop_file_out = run_dir_out / 'InterOp' / interop_file.name
             shutil.copy(str(interop_file), str(interop_file_out))
@@ -285,8 +341,8 @@ def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path):
 
 def create_run_folder_skeleton(out_dir: Path):
     """
+    Creates the skeleton structure for a mock local MiSeq run
     :param out_dir: This should be the path to .../project_name/run_name
-    :return:
     """
     base_folders = ['Config',
                     (Path('Data') / Path('Intensities') / Path('BaseCalls')),
@@ -304,7 +360,7 @@ def create_run_folder_skeleton(out_dir: Path):
                     " a given project in the output style of a local MiSeq run.")
 @click.option('-p', '--project_dir',
               type=click.Path(exists=True),
-              required=False,
+              required=True,
               default=None,
               help='Path to the directory on BaseMount for a particular project. e.g. '
                    'basemount/Projects/[your project].',
