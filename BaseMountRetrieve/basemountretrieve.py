@@ -10,7 +10,7 @@ from BaseMountRetrieve.__init__ import __version__, __author__, __email__
 
 logger = logging.getLogger()
 logging.basicConfig(
-    format=f'\033[92m \033[1m [%(levelname)s]\tbasemountretrieve:\033[0m %(message)s',
+    format=f'\033[92m \033[1m [%(levelname)s]\t:\033[0m %(message)s',
     level=logging.INFO)
 
 
