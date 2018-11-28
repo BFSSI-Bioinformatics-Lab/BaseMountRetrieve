@@ -323,11 +323,14 @@ def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path):
             os.chmod(str(run_dir_out / 'Logs' / logfile.name), 0o775)
 
         # Copy InterOp contents
-        logging.debug(f"Copying InterOp contents for {run_obj.run_name}")
-        for interop_file in run_obj.interop_files:
-            interop_file_out = run_dir_out / 'InterOp' / interop_file.name
-            shutil.copy(str(interop_file), str(interop_file_out))
-            os.chmod(str(interop_file_out), 0o775)
+        if run_obj.interop_files is not None:
+            logging.debug(f"Copying InterOp contents for {run_obj.run_name}")
+            for interop_file in run_obj.interop_files:
+                interop_file_out = run_dir_out / 'InterOp' / interop_file.name
+                shutil.copy(str(interop_file), str(interop_file_out))
+                os.chmod(str(interop_file_out), 0o775)
+        else:
+            logging.debug(f"InterOp files not available for {run_obj.run_name}, skipping")
 
         # Copy reads over
         for sample_obj in tqdm(iterable=run_obj.sample_objects, miniters=1):
