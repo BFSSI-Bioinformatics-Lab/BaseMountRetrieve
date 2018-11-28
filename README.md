@@ -43,7 +43,7 @@ Usage: basemountretrieve [OPTIONS]
 
 Options:
   -p, --project_dir PATH  Path to the directory on BaseMount for a particular
-                          project. e.g. basemount/Projects/[your project].
+                          project. e.g. basemount/Projects/[your project]. [required]
   -o, --out_dir PATH      Directory to dump all runs for project.  [required]
   -v, --verbose           Specify this flag to enable more verbose output.
   --version               Specify this flag to print the version and exit.
