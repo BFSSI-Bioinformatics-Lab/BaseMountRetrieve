@@ -8,10 +8,9 @@ from pathlib import Path
 from dataclasses import dataclass
 from BaseMountRetrieve.__init__ import __version__, __author__, __email__
 
-script = Path(__file__).name
 logger = logging.getLogger()
 logging.basicConfig(
-    format=f'\033[92m \033[1m [%(levelname)s] {script}:\033[0m %(message)s',
+    format=f'\033[92m \033[1m [%(levelname)s]\tbasemountretrieve:\033[0m %(message)s',
     level=logging.INFO)
 
 
@@ -92,10 +91,11 @@ class BaseMountRun:
     def __post_init__(self):
         self.log_dir = self.run_dir / 'Logs'
         self.properties_dir = self.run_dir / 'Properties'
+        self.run_id = self.run_dir.name
 
         # Get samplesheet, read into df
         self.samplesheet = self.get_samplesheet()
-        self.run_name = self.extract_run_name(samplesheet=self.samplesheet)
+        self.experiment_name = self.extract_experiment_name(samplesheet=self.samplesheet)
         self.samplesheet_df = self.parse_samplesheet(samplesheet=self.samplesheet)
 
         # Get InterOp dir and file contents
@@ -137,10 +137,10 @@ class BaseMountRun:
         """
         Collects and verifies the InterOp directory for a particular Run
         """
-        interop_dir = self.project_dir.parents[1] / 'Runs' / self.run_name / 'Files' / 'InterOp'
+        interop_dir = self.project_dir.parents[1] / 'Runs' / self.experiment_name / 'Files' / 'InterOp'
         if not interop_dir.is_dir():
             logging.warning(
-                f"Could not detect InterOp data for {self.run_name} - confirm researcher shared Run on BaseSpace")
+                f"Could not locate InterOp data for {self.experiment_name} - confirm researcher shared Run on BaseSpace")
             interop_dir = None
         return interop_dir
 
@@ -168,7 +168,7 @@ class BaseMountRun:
         """
         Generates a list of BaseMountSample data objects belonging to the respective Run
         """
-        logging.debug(f"Generating BaseMountSample objects for {self.run_name}")
+        logging.debug(f"Generating BaseMountSample objects for {self.run_id} ({self.experiment_name})")
         sample_object_list = []
         for sample_id, sample_dir in self.sample_id_dict.items():
             sample_object = BaseMountSample(project_dir=self.project_dir,
@@ -197,7 +197,7 @@ class BaseMountRun:
         """
         runparametersxml = self.properties_dir / 'Input.Runs' / '0' / 'Files' / 'RunParameters.xml'
         if not runparametersxml.is_file():
-            logging.warning(f"Could not locate RunParameters.xml for {self.run_name}")
+            logging.warning(f"Could not locate RunParameters.xml for {self.experiment_name}")
             return None
         else:
             return runparametersxml
@@ -215,7 +215,7 @@ class BaseMountRun:
         elif runinfoxml_2.is_file():
             return runinfoxml_2
         else:
-            logging.error(f"Could not locate RunInfo.xml for {self.run_name}")
+            logging.error(f"Could not locate RunInfo.xml for {self.experiment_name}")
             return None
 
     @staticmethod
@@ -236,7 +236,7 @@ class BaseMountRun:
         return df
 
     @staticmethod
-    def extract_run_name(samplesheet: Path) -> str:
+    def extract_experiment_name(samplesheet: Path) -> str:
         """
         Retrieves the 'Experiment Name' from SampleSheet.csv
         :param samplesheet: Path to SampleSheet.csv
@@ -295,20 +295,20 @@ def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path):
 
     project = BaseMountProject(project_dir=project_dir)
     for run_obj in project.run_objects:
-        logging.info(f"Processing {run_obj.run_name}...")
+        logging.info(f"Processing {run_obj.run_id}...")
 
         # Setup output directory
-        run_dir_out = out_dir / run_obj.run_name
+        run_dir_out = out_dir / run_obj.run_id
 
         # Check if outdir already exists, skip if it does
         if run_dir_out.exists():
-            logging.info(f"Run directory for {run_obj.run_name} already exists, skipping")
+            logging.info(f"Run directory for {run_obj.run_id} already exists, skipping")
             continue
 
         create_run_folder_skeleton(out_dir=run_dir_out)
 
         # Copy run metadata over to outdir folder
-        logging.debug(f"Copying metadata for {run_obj.run_name}")
+        logging.debug(f"Copying metadata for {run_obj.run_id}")
         shutil.copy(str(run_obj.samplesheet), str(run_dir_out / 'SampleSheet.csv'))
         shutil.copy(str(run_obj.runinfoxml), str(run_dir_out / 'RunInfo.xml'))
         os.chmod(str(run_dir_out / 'RunInfo.xml'), 0o775)
@@ -317,22 +317,23 @@ def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path):
             os.chmod(str(run_dir_out / 'RunParameters.xml'), 0o775)
 
         # Copy log files
-        logging.debug(f"Copying log file contents for {run_obj.run_name}")
+        logging.debug(f"Copying log file contents for {run_obj.run_id}")
         for logfile in run_obj.logfiles:
             shutil.copy(str(logfile), str(run_dir_out / 'Logs' / logfile.name))
             os.chmod(str(run_dir_out / 'Logs' / logfile.name), 0o775)
 
         # Copy InterOp contents
         if run_obj.interop_files is not None:
-            logging.debug(f"Copying InterOp contents for {run_obj.run_name}")
+            logging.debug(f"Copying InterOp contents for {run_obj.run_id}")
             for interop_file in run_obj.interop_files:
                 interop_file_out = run_dir_out / 'InterOp' / interop_file.name
                 shutil.copy(str(interop_file), str(interop_file_out))
                 os.chmod(str(interop_file_out), 0o775)
         else:
-            logging.debug(f"InterOp files not available for {run_obj.run_name}, skipping")
+            logging.debug(f"InterOp files not available for {run_obj.run_id}, skipping")
 
         # Copy reads over
+        logging.info(f"Transferring reads for {run_obj.run_id} ({run_obj.experiment_name})...")
         for sample_obj in tqdm(iterable=run_obj.sample_objects, miniters=1):
             r1_out = run_dir_out / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r1.name
             r2_out = run_dir_out / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r2.name
@@ -345,7 +346,7 @@ def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path):
 def create_run_folder_skeleton(out_dir: Path):
     """
     Creates the skeleton structure for a mock local MiSeq run
-    :param out_dir: This should be the path to .../project_name/run_name
+    :param out_dir: This should be the path to .../project_name/experiment_name
     """
     base_folders = ['Config',
                     (Path('Data') / Path('Intensities') / Path('BaseCalls')),
@@ -391,8 +392,8 @@ def cli(project_dir, out_dir, verbose):
         logging.getLogger().setLevel(logging.DEBUG)
         logging.debug("Enabled VERBOSE mode")
 
-    logging.debug(f"project_dir: {project_dir}")
-    logging.debug(f"out_dir: {out_dir}")
+    logging.debug(f"project_dir:\t\t{project_dir}")
+    logging.debug(f"out_dir:\t\t{out_dir}")
 
     retrieve_project_contents_from_basemount(project_dir=project_dir, out_dir=out_dir)
 
