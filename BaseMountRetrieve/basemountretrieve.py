@@ -10,7 +10,7 @@ from BaseMountRetrieve.__init__ import __version__, __author__, __email__
 
 logger = logging.getLogger()
 logging.basicConfig(
-    format=f'\033[92m \033[1m [%(levelname)s]\t:\033[0m %(message)s',
+    format=f'\033[92m \033[1m [%(levelname)s]\t\033[0m %(message)s',
     level=logging.INFO)
 
 
@@ -333,7 +333,7 @@ def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path):
             logging.debug(f"InterOp files not available for {run_obj.run_id}, skipping")
 
         # Copy reads over
-        logging.info(f"Transferring reads for {run_obj.run_id} ({run_obj.experiment_name})...")
+        logging.info(f"Copying reads for {run_obj.run_id} ({run_obj.experiment_name})...")
         for sample_obj in tqdm(iterable=run_obj.sample_objects, miniters=1):
             r1_out = run_dir_out / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r1.name
             r2_out = run_dir_out / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r2.name
