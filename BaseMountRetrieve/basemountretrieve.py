@@ -247,6 +247,9 @@ class BaseMountRun:
                 if 'Experiment Name' in line:
                     experiment_name = line.split(',')[1].strip()
                     return experiment_name
+                elif 'Description' in line:
+                    experiment_name = line.split(',')[1].strip()
+                    return experiment_name
             else:
                 raise Exception(f"Could not find 'Experiment Name' in {samplesheet}")
 
@@ -293,6 +296,7 @@ def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path):
     # Create output directory if it doesn't already exist
     out_dir.mkdir(exist_ok=True)
 
+    logging.info(f"Analyzing contents of {project_dir}...")
     project = BaseMountProject(project_dir=project_dir)
     for run_obj in project.run_objects:
         logging.info(f"Processing {run_obj.run_id}...")
