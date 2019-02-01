@@ -4,6 +4,7 @@ import shutil
 import logging
 import pandas as pd
 from tqdm import tqdm
+from typing import Union
 from pathlib import Path
 from dataclasses import dataclass
 from BaseMountRetrieve.__init__ import __version__, __author__, __email__
@@ -38,6 +39,7 @@ class BaseMountSample:
     run_dir: Path
     sample_dir: Path  # ~/basemount/Projects/PRJ1/Samples/SAMPLE1
     sample_id: str
+    sample_name: str
 
     r1: Path = None
     r2: Path = None
@@ -47,7 +49,8 @@ class BaseMountSample:
         try:
             self.validate_fastq_in_sample_dir(self.fastq_dir)
         except AssertionError:
-            logging.error(f"ERROR: Could not validate FASTQ files for {self.sample_id} at {self.sample_dir}. Skipping")
+            logging.error(
+                f"ERROR: Could not validate FASTQ files for {self.sample_id} ({self.sample_name}) at {self.sample_dir}")
             return
 
         r1, r2 = self.get_reads()
@@ -140,7 +143,8 @@ class BaseMountRun:
         interop_dir = self.project_dir.parents[1] / 'Runs' / self.experiment_name / 'Files' / 'InterOp'
         if not interop_dir.is_dir():
             logging.warning(
-                f"Could not locate InterOp data for {self.experiment_name} - confirm researcher shared Run on BaseSpace")
+                f"Could not locate InterOp data for {self.experiment_name}. "
+                f"Confirm researcher shared Run on BaseSpace.")
             interop_dir = None
         return interop_dir
 
@@ -150,8 +154,20 @@ class BaseMountRun:
         """
         sample_id_dict = {}
         for sample_dir in self.sample_dirs:
-            sample_id = sample_dir.name.split(".", 2)[2]
-            sample_id_dict[sample_id] = sample_dir
+            sample_properties = sample_dir / 'SampleProperties'
+            sample_id = None
+            sample_name = None
+            if sample_properties.exists():
+                with open(str(sample_properties), 'r') as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        if 'Name:' in line:
+                            sample_name = line.split(" ", 1)[1].strip()
+                        elif 'SampleId:' in line:
+                            sample_id = line.split(" ", 1)[1].strip()
+                        else:
+                            continue
+            sample_id_dict[sample_id] = {'sample_dir': sample_dir, 'sample_name': sample_name}
         return sample_id_dict
 
     def get_samplesheet(self) -> Path:
@@ -170,11 +186,12 @@ class BaseMountRun:
         """
         logging.debug(f"Generating BaseMountSample objects for {self.run_id} ({self.experiment_name})")
         sample_object_list = []
-        for sample_id, sample_dir in self.sample_id_dict.items():
+        for sample_id, metadata in self.sample_id_dict.items():
             sample_object = BaseMountSample(project_dir=self.project_dir,
                                             run_dir=self.run_dir,
-                                            sample_dir=sample_dir,
-                                            sample_id=sample_id)
+                                            sample_dir=metadata['sample_dir'],
+                                            sample_id=sample_id,
+                                            sample_name=metadata['sample_name'])
             sample_object_list.append(sample_object)
         return sample_object_list
 
@@ -190,7 +207,7 @@ class BaseMountRun:
 
         return sample_dirs
 
-    def get_runparametersxml(self) -> Path:
+    def get_runparametersxml(self) -> Union[Path, None]:
         """
         # TODO: Check if this file exists anywhere else on BaseMount
         Tries to grab the RunParameters.xml file if its present in the expected location
@@ -202,7 +219,7 @@ class BaseMountRun:
         else:
             return runparametersxml
 
-    def get_runinfoxml(self) -> Path:
+    def get_runinfoxml(self) -> Union[Path, None]:
         """
         Grabs the RunInfo.xml file
         """
@@ -288,7 +305,7 @@ class BaseMountProject:
         return run_dirs
 
 
-def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path):
+def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path, rename: bool):
     """
     Main method to analyze BaseMount folder contents, establish dataclasses (Project, Run, Sample), and copy to out_dir
     """
@@ -296,7 +313,7 @@ def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path):
     # Create output directory if it doesn't already exist
     out_dir.mkdir(exist_ok=True)
 
-    logging.info(f"Analyzing contents of {project_dir}...")
+    logging.info(f"Analyzing contents of {project_dir} ...")
     project = BaseMountProject(project_dir=project_dir)
     for run_obj in project.run_objects:
         logging.info(f"Processing {run_obj.run_id}...")
@@ -339,8 +356,13 @@ def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path):
         # Copy reads over
         logging.info(f"Copying reads for {run_obj.run_id} ({run_obj.experiment_name})...")
         for sample_obj in tqdm(iterable=run_obj.sample_objects, miniters=1):
-            r1_out = run_dir_out / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r1.name
-            r2_out = run_dir_out / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r2.name
+            # Rename samples to {SampleID_(R1/R2).fastq.gz} if flag is set, otherwise keep as-is
+            if rename:
+                r1_out = run_dir_out / 'Data' / 'Intensities' / 'BaseCalls' / (sample_obj.sample_id + "_R1.fastq.gz")
+                r2_out = run_dir_out / 'Data' / 'Intensities' / 'BaseCalls' / (sample_obj.sample_id + "_R2.fastq.gz")
+            else:
+                r1_out = run_dir_out / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r1.name
+                r2_out = run_dir_out / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r2.name
             shutil.copy(str(sample_obj.r1), str(r1_out))
             shutil.copy(str(sample_obj.r2), str(r2_out))
             os.chmod(str(r1_out), 0o775)
@@ -379,17 +401,21 @@ def create_run_folder_skeleton(out_dir: Path):
               default=None,
               help='Directory to dump all runs for project.',
               callback=convert_to_path)
+@click.option('-r', '--rename',
+              help='Use this flag to automatically re-name the R1 and R2 files to just include the Sample ID.',
+              is_flag=True,
+              default=False)
 @click.option('-v', '--verbose',
-              help='Specify this flag to enable more verbose output.',
+              help='Use this flag to enable more verbose output.',
               is_flag=True,
               default=False)
 @click.option('--version',
-              help='Specify this flag to print the version and exit.',
+              help='Use this flag to print the version and exit.',
               is_flag=True,
               is_eager=True,
               callback=print_version,
               expose_value=False)
-def cli(project_dir, out_dir, verbose):
+def cli(project_dir, out_dir, rename, verbose):
     logging.info(f"Started BaseMountRetrieve (v{__version__})")
 
     if verbose:
@@ -398,8 +424,9 @@ def cli(project_dir, out_dir, verbose):
 
     logging.debug(f"project_dir:\t\t{project_dir}")
     logging.debug(f"out_dir:\t\t{out_dir}")
+    logging.debug(f"Rename samples: {rename}")
 
-    retrieve_project_contents_from_basemount(project_dir=project_dir, out_dir=out_dir)
+    retrieve_project_contents_from_basemount(project_dir=project_dir, out_dir=out_dir, rename=rename)
 
     logging.info("Done!")
 
