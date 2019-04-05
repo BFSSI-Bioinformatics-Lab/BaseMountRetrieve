@@ -42,10 +42,22 @@ Usage: basemountretrieve [OPTIONS]
   local MiSeq run.
 
 Options:
-  -p, --project_dir PATH  Path to the directory on BaseMount for a particular
-                          project. e.g. basemount/Projects/[your project]. [required]
-  -o, --out_dir PATH      Directory to dump all runs for project.  [required]
-  -v, --verbose           Specify this flag to enable more verbose output.
-  --version               Specify this flag to print the version and exit.
-  --help                  Show this message and exit.
+  -p, --project-dir PATH      Path to the directory on BaseMount for a
+                              particular project. e.g.
+                              basemount/Projects/[your project].
+  -e, --experiment-name TEXT  Searches BaseMount for the name of a
+                              run/experiment and attempts to retrieve its
+                              contents. Must be used along with the
+                              --basemount-dir parameter. Cannot be used
+                              alongside the --project-dir flag.
+  -b, --basemount-dir PATH    Path to root directory for BaseMount, e.g.
+                              ~/basemount/. Must be supplied alongside
+                              --experiment-name parameter.
+  -o, --out-dir PATH          Directory to dump all runs for project.
+                              [required]
+  -r, --rename                Use this flag to automatically re-name the R1
+                              and R2 files to just include the Sample ID.
+  -v, --verbose               Use this flag to enable more verbose output.
+  --version                   Use this flag to print the version and exit.
+  --help                      Show this message and exit.
 ```
