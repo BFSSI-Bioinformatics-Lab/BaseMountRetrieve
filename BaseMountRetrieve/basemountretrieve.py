@@ -87,15 +87,16 @@ class BaseMountRun:
 
     project_dir: Path = None
     runinfoxml: Path = None
+    stats_json: Path = None
     runparametersxml: Path = None
     interop_dir: Path = None
     interop_files: [Path] = None
     experiment_name: str = None
 
     def __post_init__(self):
-        self.log_dir = self.run_dir / 'Logs'
         self.properties_dir = self.run_dir / 'Properties'
         self.run_id = self.run_dir.name
+        self.log_dir = self.get_log_dir()
 
         # Get samplesheet, read into df
         self.samplesheet = self.get_samplesheet()
@@ -114,12 +115,28 @@ class BaseMountRun:
         self.sample_id_dict = self.get_sample_id_dict()
         self.sample_objects = self.generate_sample_objects()
 
-        # Get runinfo and runparameters
+        # Get runinfo, runparameters, stats
         self.runinfoxml = self.get_runinfoxml()
         self.runparametersxml = self.get_runparametersxml()
+        self.stats_json = self.get_stats_json()
 
         # Get all logfiles
         self.logfiles = self.get_log_files()
+
+    def get_log_dir(self):
+        log_dir = self.run_dir / 'Logs'
+        if log_dir.exists():
+            return log_dir
+        else:
+            # NOTE: The BaseMount API is a mess, so the entire Output.Samples folder must be searched to return the
+            # proper log directory. If the directory can't be found, will return None.
+            samples_dir = self.properties_dir / 'Output.Samples'
+            sample_folders = list(samples_dir.glob("*"))
+            for sample_folder in sample_folders:
+                app_session_log_dir = sample_folder / 'ParentAppSession' / 'Logs'
+                if app_session_log_dir.is_dir():
+                    return app_session_log_dir
+        return None
 
     def get_interop_files(self) -> [Path]:
         """
@@ -133,10 +150,22 @@ class BaseMountRun:
     def get_log_files(self) -> [Path]:
         """
         Collects all files in the Logs/ directory and filters out hidden files
+        :return: List containing paths to all log files
         """
         logfiles = list(self.log_dir.glob("*"))
         logfiles = [f for f in logfiles if not f.name.startswith(".")]
         return logfiles
+
+    def get_stats_json(self) -> Union[Path, None]:
+        """
+        Method to retrieve the Stats.json file from self.log_dir
+        :return: Path to Stats.json or None if nothing can be found
+        """
+        if self.log_dir is not None:
+            stats_json = self.log_dir / 'Stats.json'
+            if stats_json.exists():
+                return stats_json
+        return None
 
     def get_interop_dir(self) -> Path:
         """
@@ -291,9 +320,6 @@ class BaseMountRun:
             else:
                 raise Exception(f"Could not find 'Experiment Name' in {samplesheet}")
 
-    def validate_samplesheet(self):
-        pass
-
 
 @dataclass
 class BaseMountProject:
@@ -326,29 +352,22 @@ class BaseMountProject:
         return run_dirs
 
 
-def retrieve_experiment_contents_from_basemount(experiment_name: str, basemount_dir: Path, out_dir: Path, rename: bool):
+def retrieve_experiment_contents_from_basemount(run_dir: Path, out_dir: Path, rename: bool):
+    logging.info(f"Started retrieving contents {run_dir.name}")
+
     # Create output directory if it doesn't already exist
     out_dir.mkdir(exist_ok=True, parents=True)
 
-    # Validate /Runs directory
-    runs_dir = basemount_dir / 'Runs'
-    if not runs_dir.exists():
-        logging.error(f"ERROR: Directory {runs_dir} does not exist!")
+    # Validate directory
+    if not run_dir.exists():
+        logging.error(f"ERROR: Directory {run_dir} does not exist!")
         quit()
-
-    experiment_names = [x.name for x in list(runs_dir.glob("*"))]
-    experiment_dir = None
-    if experiment_name in experiment_names:
-        experiment_dir = runs_dir / experiment_name
-        assert experiment_dir.exists()
-    else:
-        logging.error(f"ERROR: Could not find experiment {experiment_name} in {runs_dir}")
-        logging.debug(f"Detected the following experiment names: {experiment_names}")
-        quit()
+    experiment_name = run_dir.name
 
     # Establish Run object
-    run_obj = BaseMountRun(run_dir=experiment_dir, experiment_name=experiment_name)
+    run_obj = BaseMountRun(run_dir=run_dir, experiment_name=experiment_name)
 
+    # Copy reads and run data to out_dir
     create_run_folder_skeleton(out_dir=out_dir)
     copy_metadata_files(run_obj=run_obj, out_dir=out_dir)
     copy_log_files(run_obj=run_obj, out_dir=out_dir)
@@ -360,7 +379,7 @@ def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path, r
     """
     Main method to analyze BaseMount folder contents, establish dataclasses (Project, Run, Sample), and copy to out_dir
     """
-
+    logging.info(f"Started retrieving contents {project_dir.name}")
     # Create output directory if it doesn't already exist
     out_dir.mkdir(exist_ok=True)
 
@@ -393,6 +412,9 @@ def copy_metadata_files(run_obj: BaseMountRun, out_dir: Path):
     if run_obj.runparametersxml is not None:
         shutil.copy(str(run_obj.runparametersxml), str(out_dir / 'RunParameters.xml'))
         os.chmod(str(out_dir / 'RunParameters.xml'), 0o775)
+    if run_obj.stats_json is not None:
+        shutil.copy(str(run_obj.stats_json), str(out_dir / 'Stats.json'))
+        os.chmod(str(out_dir / 'Stats.json'), 0o775)
 
 
 def copy_log_files(run_obj: BaseMountRun, out_dir: Path):
@@ -453,22 +475,15 @@ def create_run_folder_skeleton(out_dir: Path):
               type=click.Path(exists=True),
               required=False,
               default=None,
-              help='Path to the directory on BaseMount for a particular project. e.g. '
-                   'basemount/Projects/[your project].',
+              help='Path to the directory on BaseMount for a particular Project. e.g. ../basemount/Projects/[project]. '
+                   'Cannot be used at the same time as the --run-dir parameter.',
               callback=convert_to_path)
-@click.option('-e', '--experiment-name',
-              type=click.STRING,
-              required=False,
-              default=None,
-              help='Searches BaseMount for the name of a run/experiment and attempts to retrieve its contents. '
-                   'Must be used along with the --basemount-dir parameter. '
-                   'Cannot be used alongside the --project-dir flag.')
-@click.option('-b', '--basemount-dir',
+@click.option('-r', '--run-dir',
               type=click.Path(exists=True),
               required=False,
               default=None,
-              help='Path to root directory for BaseMount, e.g. ~/basemount/. '
-                   'Must be supplied alongside --experiment-name parameter.',
+              help='Path to the directory on BaseMount for a particular Run. e.g. ../basemount/Runs/[your run]. '
+                   'Cannot be used at the same time as the --project-dir parameter.',
               callback=convert_to_path)
 @click.option('-o', '--out-dir',
               type=click.Path(exists=False),
@@ -476,7 +491,7 @@ def create_run_folder_skeleton(out_dir: Path):
               default=None,
               help='Directory to dump all runs for project.',
               callback=convert_to_path)
-@click.option('-r', '--rename',
+@click.option('--rename',
               help='Use this flag to automatically re-name the R1 and R2 files to just include the Sample ID.',
               is_flag=True,
               default=False)
@@ -490,7 +505,7 @@ def create_run_folder_skeleton(out_dir: Path):
               is_eager=True,
               callback=print_version,
               expose_value=False)
-def cli(project_dir, experiment_name, basemount_dir, out_dir, rename, verbose):
+def cli(project_dir, run_dir, out_dir, rename, verbose):
     logging.info(f"Started BaseMountRetrieve (v{__version__})")
 
     if verbose:
@@ -498,28 +513,34 @@ def cli(project_dir, experiment_name, basemount_dir, out_dir, rename, verbose):
         logging.debug("Enabled VERBOSE mode")
 
     # Input validation
-    if project_dir is not None and experiment_name is not None:
-        logging.error(f"ERROR: Please only provide one of --project-dir or --experiment-name, not both!")
+    if project_dir is not None and run_dir is not None:
+        logging.error(f"ERROR: Please only provide one of --project-dir or --run-dir, not both!")
         quit()
-    if project_dir is None and experiment_name is None:
-        logging.error(f"ERROR: Must provide a value for --project-dir or --experiment-name")
+    if project_dir is None and run_dir is None:
+        logging.error(f"ERROR: Please provide one of --project-dir or --run-dir!")
         quit()
-    if not (experiment_name is not None and basemount_dir is not None):
-        logging.error("ERROR: Must provide both --experiment-name and --basemount-dir values")
+    if project_dir and project_dir.parent.name != 'Projects':
+        logging.error(f"ERROR: Parent folder name is not as expected (expected: 'Projects', "
+                      f"actual: '{project_dir.parent.name}'). "
+                      f"Ensure you have provided the proper path to your target Project directory from the mounted "
+                      f"BaseMount file system.")
+        quit()
+    if run_dir and run_dir.parent.name != 'Runs':
+        logging.error(f"ERROR: Parent folder name is not as expected (expected: 'Runs', "
+                      f"actual: '{run_dir.parent.name}'). "
+                      f"Ensure you have provided the proper path to your target Run directory from the mounted "
+                      f"BaseMount file system.")
         quit()
 
-    logging.debug(f"out_dir:\t\t{out_dir}")
     logging.debug(f"Rename samples: {rename}")
+    logging.debug(f"out_dir:\t\t{out_dir}")
 
-    # TODO: Conduct check to see if runs already exist at an earlier stage to save waiting time
     if project_dir:
         logging.debug(f"project_dir:\t\t{project_dir}")
         retrieve_project_contents_from_basemount(project_dir=project_dir, out_dir=out_dir, rename=rename)
-    elif experiment_name:
-        logging.debug(f"experiment_name:\t\t{experiment_name}")
-        logging.debug(f"basemount_dir:\t\t{basemount_dir}")
-        retrieve_experiment_contents_from_basemount(experiment_name=experiment_name, basemount_dir=basemount_dir,
-                                                    out_dir=out_dir, rename=rename)
+    elif run_dir:
+        logging.debug(f"run_dir:\t\t{run_dir.name}")
+        retrieve_experiment_contents_from_basemount(run_dir=run_dir, out_dir=out_dir, rename=rename)
     logging.info("Done!")
 
 
