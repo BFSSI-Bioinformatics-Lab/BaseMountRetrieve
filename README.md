@@ -38,7 +38,7 @@ Project
 Usage: basemountretrieve [OPTIONS]
 
   BaseMountRetrieve will tap into the mounted BaseMount filesystem and
-  retrieve all of the runs for a given project in the output style of a
+  retrieve an entire Project (or single Run) in the output style of a
   local MiSeq run.
 
 Options:
