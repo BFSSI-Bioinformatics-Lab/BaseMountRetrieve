@@ -353,7 +353,7 @@ class BaseMountProject:
 
 
 def retrieve_experiment_contents_from_basemount(run_dir: Path, out_dir: Path, rename: bool):
-    logging.info(f"Started retrieving contents {run_dir.name}")
+    logging.info(f"Started retrieving contents of {run_dir.name}")
 
     # Create output directory if it doesn't already exist
     out_dir.mkdir(exist_ok=True, parents=True)
@@ -469,8 +469,8 @@ def create_run_folder_skeleton(out_dir: Path):
         (out_dir / f).mkdir(parents=True, exist_ok=True)
 
 
-@click.command(help="BaseMountRetrieve will tap into the mounted BaseMount filesystem and retrieve all of the runs for"
-                    " a given project in the output style of a local MiSeq run.")
+@click.command(help="BaseMountRetrieve will tap into the mounted BaseMount filesystem and retrieve an entire Project "
+                    "(or single Run) in the output style of a local MiSeq run.")
 @click.option('-p', '--project-dir',
               type=click.Path(exists=True),
               required=False,
