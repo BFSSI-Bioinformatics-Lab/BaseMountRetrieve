@@ -4,9 +4,9 @@ import shutil
 import logging
 import pandas as pd
 from tqdm import tqdm
-from typing import Union
 from pathlib import Path
 from dataclasses import dataclass
+from typing import Optional
 from BaseMountRetrieve.__init__ import __version__, __author__, __email__
 
 logger = logging.getLogger()
@@ -95,6 +95,7 @@ class BaseMountRun:
 
     def __post_init__(self):
         self.properties_dir = self.run_dir / 'Properties'
+
         self.run_id = self.run_dir.name
         self.log_dir = self.get_log_dir()
 
@@ -123,7 +124,7 @@ class BaseMountRun:
         # Get all logfiles
         self.logfiles = self.get_log_files()
 
-    def get_log_dir(self):
+    def get_log_dir(self) -> Optional[Path]:
         log_dir = self.run_dir / 'Logs'
         if log_dir.exists():
             return log_dir
@@ -132,6 +133,8 @@ class BaseMountRun:
             # proper log directory. If the directory can't be found, will return None.
             samples_dir = self.properties_dir / 'Output.Samples'
             sample_folders = list(samples_dir.glob("*"))
+
+            # Iterate over the sample folders til we find one with the proper Logs directory, then return
             for sample_folder in sample_folders:
                 app_session_log_dir = sample_folder / 'ParentAppSession' / 'Logs'
                 if app_session_log_dir.is_dir():
@@ -156,7 +159,7 @@ class BaseMountRun:
         logfiles = [f for f in logfiles if not f.name.startswith(".")]
         return logfiles
 
-    def get_stats_json(self) -> Union[Path, None]:
+    def get_stats_json(self) -> Optional[Path]:
         """
         Method to retrieve the Stats.json file from self.log_dir
         :return: Path to Stats.json or None if nothing can be found
@@ -199,6 +202,13 @@ class BaseMountRun:
                         else:
                             continue
             sample_id_dict[sample_id] = {'sample_dir': sample_dir, 'sample_name': sample_name}
+
+            # Debugging
+            logger.debug(f"Extracted the following sample details for {self.run_id}:")
+            logger.debug(f"sample_id\t\t\tsample_name")
+            for key, val in sample_id_dict.items():
+                logger.debug(f"{key}\t\t\t{val['sample_name']}")
+
         return sample_id_dict
 
     def get_samplesheet(self) -> Path:
@@ -233,7 +243,8 @@ class BaseMountRun:
 
     def get_sample_dirs(self) -> list:
         """
-        Grabs all Samples directories for the Run, filters out junk
+        Grabs all Samples directories for the Run, filters out junk.
+        Searches in ../Run/Properties/Output.Samples
         """
         sample_dirs = list(self.run_dir.glob("Sample.*"))
         # Try another location
@@ -251,7 +262,7 @@ class BaseMountRun:
 
         return sample_dirs
 
-    def get_runparametersxml(self) -> Union[Path, None]:
+    def get_runparametersxml(self) -> Optional[Path]:
         """
         # TODO: Check if this file exists anywhere else on BaseMount
         Tries to grab the RunParameters.xml file if its present in the expected location
@@ -266,7 +277,7 @@ class BaseMountRun:
             logging.warning(f"Could not locate RunParameters.xml for {self.experiment_name}")
             return None
 
-    def get_runinfoxml(self) -> Union[Path, None]:
+    def get_runinfoxml(self) -> Optional[Path]:
         """
         Grabs the RunInfo.xml file
         """
