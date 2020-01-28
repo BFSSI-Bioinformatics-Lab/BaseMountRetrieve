@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="BaseMountRetrieve",
-    install_requires=['click', 'pandas', 'numpy', 'tqdm', 'dataclasses'],
+    install_requires=['click', 'pandas', 'numpy', 'tqdm', 'dataclasses', 'tabulate'],
     version=__version__,
     author=__author__,
     author_email=__email__,

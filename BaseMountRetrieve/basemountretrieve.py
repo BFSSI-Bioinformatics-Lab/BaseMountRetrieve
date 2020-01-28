@@ -7,6 +7,7 @@ from tqdm import tqdm
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
+from tabulate import tabulate
 from BaseMountRetrieve.__init__ import __version__, __author__, __email__
 
 logger = logging.getLogger()
@@ -103,7 +104,15 @@ class BaseMountRun:
         self.samplesheet = self.get_samplesheet()
         if self.experiment_name is None:
             self.experiment_name = self.extract_experiment_name(samplesheet=self.samplesheet)
+            logger.debug(f'Set experiment name to {self.experiment_name}')
         self.samplesheet_df = self.parse_samplesheet(samplesheet=self.samplesheet)
+
+        # Store this to verify that that FASTQ samples match up with this - requeued runs will break this matchup and
+        # we need to log a warning
+        samplesheet_samples = self.samplesheet_df['Sample_ID'].tolist()
+
+        # Print out the samplesheet in the console; useful for debugging
+        print(tabulate(self.samplesheet_df, headers='keys', tablefmt='psql'))
 
         # Get InterOp dir and file contents
         self.interop_dir = self.get_interop_dir()
@@ -116,6 +125,15 @@ class BaseMountRun:
         self.sample_id_dict = self.get_sample_id_dict()
         self.sample_objects = self.generate_sample_objects()
 
+        # Do cross validation between sample_objects and samplesheet_samples
+        sample_object_ids = [s.sample_id for s in self.sample_objects]
+        difference_list = list(set(sample_object_ids) - set(samplesheet_samples))
+        if len(difference_list) > 0:
+            logger.warning(f'Found discrepanices between listed samples in the samplesheet and samples found in FASTQ '
+                           f'directories. This is likely due to an analysis requeue in BaseSpace. Discrepant samples:')
+            for s in difference_list:
+                print(f'\t\t{s}')
+
         # Get runinfo, runparameters, stats
         self.runinfoxml = self.get_runinfoxml()
         self.runparametersxml = self.get_runparametersxml()
@@ -127,6 +145,7 @@ class BaseMountRun:
     def get_log_dir(self) -> Optional[Path]:
         log_dir = self.run_dir / 'Logs'
         if log_dir.exists():
+            logger.debug(f'Detected log directory at {log_dir}')
             return log_dir
         else:
             # NOTE: The BaseMount API is a mess, so the entire Output.Samples folder must be searched to return the
@@ -138,6 +157,7 @@ class BaseMountRun:
             for sample_folder in sample_folders:
                 app_session_log_dir = sample_folder / 'ParentAppSession' / 'Logs'
                 if app_session_log_dir.is_dir():
+                    logger.debug(f'Detected alternate log directory at {app_session_log_dir}')
                     return app_session_log_dir
         return None
 
@@ -177,7 +197,7 @@ class BaseMountRun:
         interop_dir = self.run_dir / 'Files' / 'InterOp'
         if not interop_dir.is_dir():
             logging.warning(
-                f"Could not locate InterOp data for {self.experiment_name}. "
+                f"Could not locate InterOp data for {self.experiment_name} at {interop_dir}. "
                 f"Confirm researcher shared Run on BaseSpace.")
             interop_dir = None
         return interop_dir
@@ -203,28 +223,31 @@ class BaseMountRun:
                             continue
             sample_id_dict[sample_id] = {'sample_dir': sample_dir, 'sample_name': sample_name}
 
-            # Debugging
-            logger.debug(f"Extracted the following sample details for {self.run_id}:")
-            logger.debug(f"sample_id\t\t\tsample_name")
-            for key, val in sample_id_dict.items():
-                logger.debug(f"{key}\t\t\t{val['sample_name']}")
+        # Debugging
+        logger.debug(f"Extracted the following sample details for {self.run_id}:")
+        logger.debug(f"sample_id\t\tsample_name")
+        for key, val in sample_id_dict.items():
+            logger.debug(f"{key}\t{val['sample_name']}")
 
         return sample_id_dict
 
     def get_samplesheet(self) -> Path:
         """
-        Grabs and verifies the SampleSheet for a Run
+        Grabs and verifies the SampleSheet for a Run. Checks several known locations on BaseMount.
         """
-        samplesheet = self.properties_dir / "Input.sample-sheet"
-        if samplesheet.is_file():
-            return samplesheet
-        else:
-            samplesheet = self.properties_dir.parent / 'Files' / 'SampleSheet.csv'
-            try:
-                assert (samplesheet.exists())
-            except FileNotFoundError:
-                raise FileNotFoundError(f"Could not find SampleSheet at expected location: {samplesheet}")
-            return samplesheet
+        possible_samplesheet_locations = [
+            self.properties_dir / "Input.sample-sheet",
+            self.properties_dir.parent / 'Files' / 'SampleSheet.csv',
+            self.properties_dir / 'Input.Libraries' / '0' / 'Properties' / 'Output.Runs' / '0' / 'Files' / 'SampleSheet.csv',
+        ]
+
+        for samplesheet in possible_samplesheet_locations:
+            if samplesheet.is_file():
+                logger.debug(f'Found SampleSheet at {samplesheet}')
+                return samplesheet
+            else:
+                continue
+        raise FileNotFoundError(f"Could not find SampleSheet in any of the expected locations!")
 
     def generate_sample_objects(self) -> [BaseMountSample]:
         """
@@ -293,7 +316,7 @@ class BaseMountRun:
         elif runinfoxml_3.is_file():
             return runinfoxml_3
         else:
-            logging.error(f"Could not locate RunInfo.xml for {self.experiment_name}")
+            logging.warning(f"Could not locate RunInfo.xml for {self.experiment_name}")
             return None
 
     @staticmethod
@@ -371,8 +394,7 @@ def retrieve_experiment_contents_from_basemount(run_dir: Path, out_dir: Path, re
 
     # Validate directory
     if not run_dir.exists():
-        logging.error(f"ERROR: Directory {run_dir} does not exist!")
-        quit()
+        raise FileNotFoundError(f"Directory {run_dir} does not exist! Quitting.")
     experiment_name = run_dir.name
 
     # Establish Run object
@@ -414,25 +436,33 @@ def retrieve_project_contents_from_basemount(project_dir: Path, out_dir: Path, r
         copy_reads(run_obj=run_obj, out_dir=run_dir_out, rename=rename)
 
 
+def shutil_if_exists(src: Path, dst: Path):
+    """
+    Copies a file to dst, sets generous permissions, and fails quietly if src is None
+    """
+    try:
+        shutil.copy(str(src), str(dst))
+        os.chmod(str(dst), 0o666)  # 666: read/write but no execute
+    except FileNotFoundError:
+        return
+
+
 def copy_metadata_files(run_obj: BaseMountRun, out_dir: Path):
     logging.debug(f"Copying metadata for {run_obj.run_id}")
-    shutil.copy(str(run_obj.samplesheet), str(out_dir / 'SampleSheet.csv'))
-    shutil.copy(str(run_obj.runinfoxml), str(out_dir / 'RunInfo.xml'))
-    os.chmod(str(out_dir / 'RunInfo.xml'), 0o775)
-    os.chmod(str(out_dir / 'SampleSheet.csv'), 0o775)
-    if run_obj.runparametersxml is not None:
-        shutil.copy(str(run_obj.runparametersxml), str(out_dir / 'RunParameters.xml'))
-        os.chmod(str(out_dir / 'RunParameters.xml'), 0o775)
-    if run_obj.stats_json is not None:
-        shutil.copy(str(run_obj.stats_json), str(out_dir / 'Stats.json'))
-        os.chmod(str(out_dir / 'Stats.json'), 0o775)
+    metadata_files = [
+        (run_obj.samplesheet, out_dir / 'SampleSheet.csv'),
+        (run_obj.runinfoxml, out_dir / 'RunInfo.xml'),
+        (run_obj.stats_json, out_dir / 'Stats.json')
+    ]
+    for src, dst in metadata_files:
+        shutil_if_exists(src, dst)
 
 
 def copy_log_files(run_obj: BaseMountRun, out_dir: Path):
     logging.debug(f"Copying log file contents for {run_obj.run_id}")
     for logfile in run_obj.logfiles:
         shutil.copy(str(logfile), str(out_dir / 'Logs' / logfile.name))
-        os.chmod(str(out_dir / 'Logs' / logfile.name), 0o775)
+        os.chmod(str(out_dir / 'Logs' / logfile.name), 0o666)
 
 
 def copy_interop_files(run_obj: BaseMountRun, out_dir: Path):
@@ -442,7 +472,7 @@ def copy_interop_files(run_obj: BaseMountRun, out_dir: Path):
         for interop_file in run_obj.interop_files:
             interop_file_out = out_dir / 'InterOp' / interop_file.name
             shutil.copy(str(interop_file), str(interop_file_out))
-            os.chmod(str(interop_file_out), 0o775)
+            os.chmod(str(interop_file_out), 0o666)
     else:
         logging.debug(f"InterOp files not available for {run_obj.run_id}, skipping")
 
@@ -459,8 +489,8 @@ def copy_reads(run_obj: BaseMountRun, out_dir: Path, rename: bool):
             r2_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r2.name
         shutil.copy(str(sample_obj.r1), str(r1_out))
         shutil.copy(str(sample_obj.r2), str(r2_out))
-        os.chmod(str(r1_out), 0o775)
-        os.chmod(str(r2_out), 0o775)
+        os.chmod(str(r1_out), 0o666)
+        os.chmod(str(r2_out), 0o666)
 
 
 def create_run_folder_skeleton(out_dir: Path):
@@ -544,13 +574,13 @@ def cli(project_dir, run_dir, out_dir, rename, verbose):
         quit()
 
     logging.debug(f"Rename samples: {rename}")
-    logging.debug(f"out_dir:\t\t{out_dir}")
+    logging.debug(f"out_dir:\t{out_dir}")
 
     if project_dir:
-        logging.debug(f"project_dir:\t\t{project_dir}")
+        logging.debug(f"project_dir:\t{project_dir}")
         retrieve_project_contents_from_basemount(project_dir=project_dir, out_dir=out_dir, rename=rename)
     elif run_dir:
-        logging.debug(f"run_dir:\t\t{run_dir.name}")
+        logging.debug(f"run_dir:\t{run_dir}")
         retrieve_experiment_contents_from_basemount(run_dir=run_dir, out_dir=out_dir, rename=rename)
     logging.info("Done!")
 
