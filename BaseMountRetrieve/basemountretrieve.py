@@ -137,9 +137,9 @@ class BaseMountRun:
         # Get runinfo, runparameters, stats
         self.runinfoxml = self.get_runinfoxml()
         self.runparametersxml = self.get_runparametersxml()
-        self.stats_json = self.get_stats_json()
 
-        # Get all logfiles
+        # Get all log files
+        self.stats_json = self.get_stats_json()
         self.logfiles = self.get_log_files()
 
     def get_log_dir(self) -> Optional[Path]:
@@ -152,6 +152,7 @@ class BaseMountRun:
             # proper log directory. If the directory can't be found, will return None.
             samples_dir = self.properties_dir / 'Output.Samples'
             sample_folders = list(samples_dir.glob("*"))
+            logger.warning(f'Could not detect standard log directory at {log_dir}, digging a bit deeper...')
 
             # Iterate over the sample folders til we find one with the proper Logs directory, then return
             for sample_folder in sample_folders:
@@ -159,6 +160,7 @@ class BaseMountRun:
                 if app_session_log_dir.is_dir():
                     logger.debug(f'Detected alternate log directory at {app_session_log_dir}')
                     return app_session_log_dir
+        logger.error('ERROR: Could not find any log directory after deep search!')
         return None
 
     def get_interop_files(self) -> [Path]:
@@ -175,6 +177,8 @@ class BaseMountRun:
         Collects all files in the Logs/ directory and filters out hidden files
         :return: List containing paths to all log files
         """
+        if self.log_dir is None:
+            return []
         logfiles = list(self.log_dir.glob("*"))
         logfiles = [f for f in logfiles if not f.name.startswith(".")]
         return logfiles
@@ -184,10 +188,9 @@ class BaseMountRun:
         Method to retrieve the Stats.json file from self.log_dir
         :return: Path to Stats.json or None if nothing can be found
         """
-        if self.log_dir is not None:
-            stats_json = self.log_dir / 'Stats.json'
-            if stats_json.exists():
-                return stats_json
+        stats_json = self.log_dir / 'Stats.json'
+        if stats_json.exists():
+            return stats_json
         return None
 
     def get_interop_dir(self) -> Path:
