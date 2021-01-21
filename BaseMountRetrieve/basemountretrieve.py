@@ -139,8 +139,9 @@ class BaseMountRun:
         self.runparametersxml = self.get_runparametersxml()
 
         # Get all log files
-        self.stats_json = self.get_stats_json()
-        self.logfiles = self.get_log_files()
+        if self.log_dir is not None:
+            self.stats_json = self.get_stats_json()
+            self.logfiles = self.get_log_files()
 
     def get_log_dir(self) -> Optional[Path]:
         log_dir = self.run_dir / 'Logs'
