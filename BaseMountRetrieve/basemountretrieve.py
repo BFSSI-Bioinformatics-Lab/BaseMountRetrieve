@@ -4,6 +4,7 @@ import shutil
 import logging
 import pandas as pd
 from tqdm import tqdm
+from typing import Union
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
@@ -77,6 +78,156 @@ class BaseMountSample:
         assert len(r2) == 1
         assert r1[0].is_file()
         assert r2[0].is_file()
+
+
+@dataclass
+class BaseMountNextSeqSample:
+    """
+    Dataclass to store data for a NextSeq Sample from BaseMount
+    """
+    run_dir: Path
+    sample_dir: Path  # ~/basemount/Runs/something/Properties/Output.Samples/1
+    sample_id: str = None
+    sample_name: str = None
+
+    r1_l1: Path = None
+    r2_l1: Path = None
+
+    r1_l2: Path = None
+    r2_l2: Path = None
+
+    r1_l3: Path = None
+    r2_l3: Path = None
+
+    r1_l4: Path = None
+    r2_l4: Path = None
+
+    def __post_init__(self):
+        self.fastq_dir = self.sample_dir / 'Files'
+
+
+@dataclass
+class BaseMountNextSeqRun:
+    """
+    Dataclass to store data for a Nextseq Run from BaseMount
+    """
+    run_dir: Path
+    experiment_name: str
+
+    project_dir: Path = None
+    runinfoxml: Path = None
+    runparametersxml: Path = None
+    interop_dir: Path = None
+    interop_files: [Path] = None
+    sample_directory: Path = None
+
+    nextseq_samples: [BaseMountNextSeqSample] = None
+
+    def __post_init__(self):
+        self.run_id = self.run_dir.name
+        self.runparametersxml = self.run_dir / 'Files' / 'RunParameters.xml'
+        self.runinfoxml = self.run_dir / 'Files' / 'RunInfo.xml'
+        self.interop_dir = self.run_dir / 'InterOp'
+        self.interop_files = list(self.interop_dir.glob("*.bin"))
+        self.sample_directory = self.run_dir / 'Properties' / 'Output.Samples'
+        self.sample_directories = list(self.sample_directory.glob("*"))
+
+        logger.debug(f'Detected {self.runparametersxml} - {self.runparametersxml.exists()}')
+        logger.debug(f'Detected {self.runinfoxml} - {self.runinfoxml.exists()}')
+        logger.debug(f'Detected the following InterOp files:')
+        for f in self.interop_files:
+            logger.debug(f)
+        logger.info(f'Detected a total of {len(self.sample_directories)} samples in {self.sample_directory}')
+        if len(self.sample_directories) < 1:
+            logger.info(f'Could not detect any samples to retrieve - quitting')
+            quit()
+        nextseq_samples = self.generate_nextseq_samples()
+        logger.info(f'Successfully generated {len(nextseq_samples)} NextSeq sample objects')
+        self.nextseq_samples = nextseq_samples
+
+    def generate_nextseq_samples(self) -> [BaseMountNextSeqSample]:
+        nextseq_samples = []
+        for sample_dir in self.sample_directories:
+            try:
+                sample_properties = self.parse_sample_properties(sample_dir / 'SampleProperties')
+            except Exception as e:
+                logger.warning(
+                    f'Could not find SampleProperties file in expected location for sample located at {sample_dir}, '
+                    f'skipping')
+                logger.warning(e)
+                continue
+            fastq_file_dict = self.grab_nextseq_fastq_files(sample_dir)
+            try:
+                nextseq_sample = BaseMountNextSeqSample(
+                    run_dir=self.run_dir,
+                    sample_dir=sample_dir,
+                    sample_id=sample_properties['sample_id'],
+                    sample_name=sample_properties['sample_name'],
+                    r1_l1=fastq_file_dict['R1_L1'],
+                    r2_l1=fastq_file_dict['R2_L1'],
+                    r1_l2=fastq_file_dict['R1_L2'],
+                    r2_l2=fastq_file_dict['R2_L2'],
+                    r1_l3=fastq_file_dict['R1_L3'],
+                    r2_l3=fastq_file_dict['R2_L3'],
+                    r1_l4=fastq_file_dict['R1_L4'],
+                    r2_l4=fastq_file_dict['R2_L4']
+                )
+                nextseq_samples.append(nextseq_sample)
+            except Exception:
+                logger.warning(f'Encountered error parsing sample located at {sample_dir}, skipping!')
+                continue
+            logger.info(f'Successfully parsed {sample_properties["sample_id"]}')
+        return nextseq_samples
+
+    @staticmethod
+    def grab_nextseq_fastq_files(sample_dir: Path) -> Optional[dict]:
+        """
+        Retrieves FASTQ files and assigns them to R1_L1, R2_L1, R1_L2, R2_L2, etc in a dictionary
+        """
+        fastq_files = list((sample_dir / 'Files').glob("*"))
+        if len(fastq_files) < 1:
+            logger.warning(f'Could not find any FASTQ files in expected location {sample_dir}, returning None')
+            return None
+        nextseq_fastq_dict = {}
+        for f in fastq_files:
+            if 'L001_R1' in f.name:
+                nextseq_fastq_dict['R1_L1'] = f
+            elif 'L001_R2' in f.name:
+                nextseq_fastq_dict['R2_L1'] = f
+            elif 'L002_R1' in f.name:
+                nextseq_fastq_dict['R1_L2'] = f
+            elif 'L002_R2' in f.name:
+                nextseq_fastq_dict['R2_L2'] = f
+            elif 'L003_R1' in f.name:
+                nextseq_fastq_dict['R1_L3'] = f
+            elif 'L003_R2' in f.name:
+                nextseq_fastq_dict['R2_L3'] = f
+            elif 'L004_R1' in f.name:
+                nextseq_fastq_dict['R1_L4'] = f
+            elif 'L004_R2' in f.name:
+                nextseq_fastq_dict['R2_L4'] = f
+        return nextseq_fastq_dict
+
+    @staticmethod
+    def parse_sample_properties(sample_properties: Path) -> dict:
+        """
+        Parses the SampleProperties file found in a Output.Samples subdirectory which contains useful metadata
+        """
+        sample_properties_dict = {}
+        with open(sample_properties, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if 'Name' in line:
+                    sample_properties_dict['sample_name'] = line.split(': ')[1]
+                elif 'SampleId' in line:
+                    sample_properties_dict['sample_id'] = line.split(': ')[1]
+                elif 'SampleNumber' in line:
+                    sample_properties_dict['sample_number'] = line.split(': ')[1]
+                elif 'NumReadsRaw' in line:
+                    sample_properties_dict['num_reads_raw'] = line.split(': ')[1]
+                elif 'NumReadsPF' in line:
+                    sample_properties_dict['num_reads_pf'] = line.split(': ')[1]
+        return sample_properties_dict
 
 
 @dataclass
@@ -390,6 +541,25 @@ class BaseMountProject:
         return run_dirs
 
 
+def retrieve_nextseq_experiment_contents_from_basemount(run_dir: Path, out_dir: Path):
+    logging.info(f"Started retrieving contents of {run_dir.name}")
+
+    # Create output directory if it doesn't already exist
+    out_dir.mkdir(exist_ok=True, parents=True)
+
+    # Validate directory
+    if not run_dir.exists():
+        raise FileNotFoundError(f"Directory {run_dir} does not exist! Quitting.")
+    experiment_name = run_dir.name
+
+    run_obj = BaseMountNextSeqRun(run_dir=run_dir, experiment_name=experiment_name)
+
+    # Copy data to run dir
+    create_run_folder_skeleton(out_dir)
+    copy_nextseq_reads(run_obj, out_dir)
+    copy_interop_files(run_obj, out_dir)
+
+
 def retrieve_experiment_contents_from_basemount(run_dir: Path, out_dir: Path, rename: bool):
     logging.info(f"Started retrieving contents of {run_dir.name}")
 
@@ -469,7 +639,7 @@ def copy_log_files(run_obj: BaseMountRun, out_dir: Path):
         os.chmod(str(out_dir / 'Logs' / logfile.name), 0o666)
 
 
-def copy_interop_files(run_obj: BaseMountRun, out_dir: Path):
+def copy_interop_files(run_obj: Union[BaseMountRun, BaseMountNextSeqRun], out_dir: Path):
     logging.debug(f"Searching for InterOp files...")
     if run_obj.interop_files is not None:
         logging.debug(f"Copying InterOp contents for {run_obj.run_id}")
@@ -479,6 +649,46 @@ def copy_interop_files(run_obj: BaseMountRun, out_dir: Path):
             os.chmod(str(interop_file_out), 0o666)
     else:
         logging.debug(f"InterOp files not available for {run_obj.run_id}, skipping")
+
+
+def copy_nextseq_reads(run_obj: BaseMountNextSeqRun, out_dir: Path):
+    logging.info(f"Copying reads for {run_obj.run_id}...")
+    for sample_obj in tqdm(iterable=run_obj.nextseq_samples, miniters=1):
+        r1_l1_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r1_l1.name
+        r2_l1_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r2_l1.name
+
+        r1_l2_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r1_l2.name
+        r2_l2_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r2_l2.name
+
+        r1_l3_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r1_l3.name
+        r2_l3_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r2_l3.name
+
+        r1_l4_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r1_l4.name
+        r2_l4_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r2_l4.name
+
+        shutil.copy(str(sample_obj.r1_l1), str(r1_l1_out))
+        shutil.copy(str(sample_obj.r2_l1), str(r2_l1_out))
+
+        shutil.copy(str(sample_obj.r1_l2), str(r1_l2_out))
+        shutil.copy(str(sample_obj.r2_l2), str(r2_l2_out))
+
+        shutil.copy(str(sample_obj.r1_l3), str(r1_l3_out))
+        shutil.copy(str(sample_obj.r2_l3), str(r2_l3_out))
+
+        shutil.copy(str(sample_obj.r1_l4), str(r1_l4_out))
+        shutil.copy(str(sample_obj.r2_l4), str(r2_l4_out))
+
+        os.chmod(str(r1_l1_out), 0o666)
+        os.chmod(str(r2_l1_out), 0o666)
+
+        os.chmod(str(r1_l2_out), 0o666)
+        os.chmod(str(r2_l2_out), 0o666)
+
+        os.chmod(str(r1_l3_out), 0o666)
+        os.chmod(str(r2_l3_out), 0o666)
+
+        os.chmod(str(r1_l4_out), 0o666)
+        os.chmod(str(r2_l4_out), 0o666)
 
 
 def copy_reads(run_obj: BaseMountRun, out_dir: Path, rename: bool):
@@ -540,6 +750,10 @@ def create_run_folder_skeleton(out_dir: Path):
               help='Use this flag to automatically re-name the R1 and R2 files to just include the Sample ID.',
               is_flag=True,
               default=False)
+@click.option('-n', '--nextseq-run',
+              help='Use this flag if the run you are trying to retrieve is from a NextSeq',
+              is_flag=True,
+              default=False)
 @click.option('-v', '--verbose',
               help='Use this flag to enable more verbose output.',
               is_flag=True,
@@ -550,7 +764,7 @@ def create_run_folder_skeleton(out_dir: Path):
               is_eager=True,
               callback=print_version,
               expose_value=False)
-def cli(project_dir, run_dir, out_dir, rename, verbose):
+def cli(project_dir, run_dir, out_dir, rename, nextseq_run, verbose):
     logging.info(f"Started BaseMountRetrieve (v{__version__})")
 
     if verbose:
@@ -583,6 +797,9 @@ def cli(project_dir, run_dir, out_dir, rename, verbose):
     if project_dir:
         logging.debug(f"project_dir:\t{project_dir}")
         retrieve_project_contents_from_basemount(project_dir=project_dir, out_dir=out_dir, rename=rename)
+    elif run_dir and nextseq_run:
+        logging.debug(f"NextSeq run_dir:\t{run_dir}")
+        retrieve_nextseq_experiment_contents_from_basemount(run_dir=run_dir, out_dir=out_dir)
     elif run_dir:
         logging.debug(f"run_dir:\t{run_dir}")
         retrieve_experiment_contents_from_basemount(run_dir=run_dir, out_dir=out_dir, rename=rename)
