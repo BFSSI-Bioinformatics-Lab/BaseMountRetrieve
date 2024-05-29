@@ -636,6 +636,7 @@ def copy_metadata_files(run_obj: BaseMountRun, out_dir: Path):
     metadata_files = [
         (run_obj.samplesheet, out_dir / 'SampleSheet.csv'),
         (run_obj.runinfoxml, out_dir / 'RunInfo.xml'),
+        (run_obj.runparametersxml, out_dir / "RunParameters.xml"),
         (run_obj.stats_json, out_dir / 'Stats.json')
     ]
     for src, dst in metadata_files:
