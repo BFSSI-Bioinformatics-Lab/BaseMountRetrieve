@@ -31,6 +31,11 @@ def convert_to_path(ctx, param, value):
         return
     return Path(value)
 
+def appendreads(fileone, filetwo):
+    with open(fileone, 'ab') as outfile:
+        with open(filetwo, 'rb') as appending:
+            shutil.copyfileobj(appending, outfile)
+
 
 @dataclass
 class BaseMountSample:
@@ -122,6 +127,10 @@ class BaseMountNextSeqRun:
     interop_files: [Path] = None
     sample_directory: Path = None
 
+    stats_json: Path = None
+    experiment_name: str = None
+
+
     nextseq_samples: [BaseMountNextSeqSample] = None
 
     def __post_init__(self):
@@ -133,6 +142,7 @@ class BaseMountNextSeqRun:
         self.sample_directory = self.run_dir / 'Properties' / 'Output.Samples'
         self.sample_directories = list(self.sample_directory.glob("*"))
         self.sample_directories = [x for x in self.sample_directories if x.is_dir()]
+        self.samplesheet = self.get_samplesheet()
 
         logger.debug(f'Detected {self.runparametersxml} - {self.runparametersxml.exists()}')
         logger.debug(f'Detected {self.runinfoxml} - {self.runinfoxml.exists()}')
@@ -146,6 +156,24 @@ class BaseMountNextSeqRun:
         nextseq_samples = self.generate_nextseq_samples()
         logger.info(f'Successfully generated {len(nextseq_samples)} NextSeq sample objects')
         self.nextseq_samples = nextseq_samples
+
+
+    def get_samplesheet(self) -> Path:
+        """
+        Grabs and verifies the SampleSheet for a Run. Checks several known locations on BaseMount.
+        """
+        possible_samplesheet_locations = [
+            self.run_dir / 'Files' / 'SampleSheet.csv',
+        ]
+
+        for samplesheet in possible_samplesheet_locations:
+            if samplesheet.is_file():
+                logger.debug(f'Found SampleSheet at {samplesheet}')
+                return samplesheet
+            else:
+                continue
+        raise FileNotFoundError(f"Could not find SampleSheet in any of the expected locations!")
+
 
     def generate_nextseq_samples(self) -> [BaseMountNextSeqSample]:
         nextseq_samples = []
@@ -173,14 +201,18 @@ class BaseMountNextSeqRun:
                     sample_name=sample_properties['sample_name'],
                     sample_properties_file=sample_properties_file,
                     r1_l1=fastq_file_dict['R1_L1'],
-                    r2_l1=fastq_file_dict['R2_L1'],
-                    r1_l2=fastq_file_dict['R1_L2'],
-                    r2_l2=fastq_file_dict['R2_L2'],
-                    r1_l3=fastq_file_dict['R1_L3'],
-                    r2_l3=fastq_file_dict['R2_L3'],
-                    r1_l4=fastq_file_dict['R1_L4'],
-                    r2_l4=fastq_file_dict['R2_L4']
-                )
+                    r2_l1=fastq_file_dict['R2_L1']
+                    )
+
+                if 'R1_L2' in fastq_file_dict.keys():
+                    nextseq_sample.r1_l2=fastq_file_dict['R1_L2']
+                    nextseq_sample.r2_l2=fastq_file_dict['R2_L2']
+                if 'R1_L3' in fastq_file_dict.keys():
+                    nextseq_sample.r1_l3=fastq_file_dict['R1_L3']
+                    nextseq_sample.r2_l3=fastq_file_dict['R2_L3']
+                if 'R1_L4' in fastq_file_dict.keys():
+                    nextseq_sample.r1_l4=fastq_file_dict['R1_L4']
+                    nextseq_sample.r2_l4=fastq_file_dict['R2_L4']
                 nextseq_samples.append(nextseq_sample)
             except Exception:
                 logger.warning(f'Encountered error parsing sample located at {sample_dir}, skipping!')
@@ -464,6 +496,7 @@ class BaseMountRun:
             logging.warning(f"Could not locate RunParameters.xml for {self.experiment_name}")
             return None
 
+
     def get_runinfoxml(self) -> Optional[Path]:
         """
         Grabs the RunInfo.xml file
@@ -550,7 +583,7 @@ class BaseMountProject:
         return run_dirs
 
 
-def retrieve_nextseq_experiment_contents_from_basemount(run_dir: Path, out_dir: Path, rename: bool):
+def retrieve_nextseq_experiment_contents_from_basemount(run_dir: Path, out_dir: Path, rename: bool, lanes: bool):
     logging.info(f"Started retrieving contents of {run_dir.name}")
 
     # Create output directory if it doesn't already exist
@@ -565,8 +598,9 @@ def retrieve_nextseq_experiment_contents_from_basemount(run_dir: Path, out_dir: 
 
     # Copy data to run dir
     create_run_folder_skeleton(out_dir)
+    copy_metadata_files(run_obj=run_obj, out_dir=out_dir)
     copy_sample_properties_files(run_obj, out_dir)
-    copy_nextseq_reads(run_obj, out_dir, rename)
+    copy_nextseq_reads(run_obj, out_dir, rename, lanes)
     copy_interop_files(run_obj, out_dir)
 
 
@@ -631,7 +665,7 @@ def shutil_if_exists(src: Path, dst: Path):
         return
 
 
-def copy_metadata_files(run_obj: BaseMountRun, out_dir: Path):
+def copy_metadata_files(run_obj: Union[BaseMountRun, BaseMountNextSeqRun], out_dir: Path):
     logging.debug(f"Copying metadata for {run_obj.run_id}")
     metadata_files = [
         (run_obj.samplesheet, out_dir / 'SampleSheet.csv'),
@@ -670,18 +704,22 @@ def copy_interop_files(run_obj: Union[BaseMountRun, BaseMountNextSeqRun], out_di
         logging.debug(f"InterOp files not available for {run_obj.run_id}, skipping")
 
 
-def copy_nextseq_reads(run_obj: BaseMountNextSeqRun, out_dir: Path, rename: bool):
+def copy_nextseq_reads(run_obj: BaseMountNextSeqRun, out_dir: Path, rename: bool, lanes: bool):
     logging.info(f"Copying reads for {run_obj.run_id}...")
     for sample_obj in tqdm(iterable=run_obj.nextseq_samples, miniters=1):
         if rename:
-            r1_l1_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L001_R1.fastq.gz'
-            r2_l1_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L001_R2.fastq.gz'
-            r1_l2_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L002_R1.fastq.gz'
-            r2_l2_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L002_R2.fastq.gz'
-            r1_l3_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L003_R1.fastq.gz'
-            r2_l3_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L003_R2.fastq.gz'
-            r1_l4_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L004_R1.fastq.gz'
-            r2_l4_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L004_R2.fastq.gz'
+            if lanes:
+                r1_l1_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L001_R1.fastq.gz'
+                r2_l1_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L001_R2.fastq.gz'
+                r1_l2_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L002_R1.fastq.gz'
+                r2_l2_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L002_R2.fastq.gz'
+                r1_l3_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L003_R1.fastq.gz'
+                r2_l3_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L003_R2.fastq.gz'
+                r1_l4_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L004_R1.fastq.gz'
+                r2_l4_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_L004_R2.fastq.gz'
+            else:
+                r1_l1_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_R1.fastq.gz'
+                r2_l1_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / f'{sample_obj.sample_id}_R2.fastq.gz'
         else:
             r1_l1_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r1_l1.name
             r2_l1_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r2_l1.name
@@ -692,21 +730,34 @@ def copy_nextseq_reads(run_obj: BaseMountNextSeqRun, out_dir: Path, rename: bool
             r1_l4_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r1_l4.name
             r2_l4_out = out_dir / 'Data' / 'Intensities' / 'BaseCalls' / sample_obj.r2_l4.name
 
-        outfiles = [r1_l1_out, r2_l1_out,
-                    r1_l2_out, r2_l2_out,
-                    r1_l3_out, r2_l3_out,
-                    r1_l4_out, r2_l4_out
-                    ]
+        outfiles = [r1_l1_out, r2_l1_out]
 
         shutil.copy(str(sample_obj.r1_l1), str(r1_l1_out))
         shutil.copy(str(sample_obj.r2_l1), str(r2_l1_out))
-        shutil.copy(str(sample_obj.r1_l2), str(r1_l2_out))
-        shutil.copy(str(sample_obj.r2_l2), str(r2_l2_out))
-        shutil.copy(str(sample_obj.r1_l3), str(r1_l3_out))
-        shutil.copy(str(sample_obj.r2_l3), str(r2_l3_out))
-        shutil.copy(str(sample_obj.r1_l4), str(r1_l4_out))
-        shutil.copy(str(sample_obj.r2_l4), str(r2_l4_out))
-
+        if sample_obj.r1_l2:
+            if lanes:
+                outfiles.append(r1_l2_out, r2_l2_out)
+                shutil.copy(str(sample_obj.r1_l2), str(r1_l2_out))
+                shutil.copy(str(sample_obj.r2_l2), str(r2_l2_out))
+            else:
+                appendreads(str(r1_l1_out), str(sample_obj.r1_l2))
+                appendreads(str(r2_l1_out), str(sample_obj.r2_l2))
+        if sample_obj.r1_l3:
+            if lanes:
+                outfiles.append(r1_l3_out, r2_l3_out)
+                shutil.copy(str(sample_obj.r1_l3), str(r1_l3_out))
+                shutil.copy(str(sample_obj.r2_l3), str(r2_l3_out))
+            else:
+                appendreads(str(r1_l1_out), str(sample_obj.r1_l3))
+                appendreads(str(r2_l1_out), str(sample_obj.r2_l3))
+        if sample_obj.r1_l4:
+            if lanes:
+                outfiles.append(r1_l2_out, r2_l4_out)
+                shutil.copy(str(sample_obj.r1_l4), str(r1_l4_out))
+                shutil.copy(str(sample_obj.r2_l4), str(r2_l4_out))
+            else:
+                appendreads(str(r1_l1_out), str(sample_obj.r1_l4))
+                appendreads(str(r2_l1_out), str(sample_obj.r2_l4))
         for f in outfiles:
             os.chmod(str(f), 0o666)
 
@@ -770,8 +821,12 @@ def create_run_folder_skeleton(out_dir: Path):
               help='Use this flag to automatically re-name the R1 and R2 files to just include the Sample ID.',
               is_flag=True,
               default=False)
-@click.option('-n', '--nextseq',
-              help='Use this flag if the run you are trying to retrieve is from a NextSeq',
+@click.option('-m', '--oldmiseq',
+              help='Use this flag if the run you are trying to retrieve is from a run on the old MiSeq',
+              is_flag=True,
+              default=False)
+@click.option('-l', '--lanes',
+              help='Use this flag if you want lanes to remain separate. Otherwise they will be merged.',
               is_flag=True,
               default=False)
 @click.option('-v', '--verbose',
@@ -784,7 +839,7 @@ def create_run_folder_skeleton(out_dir: Path):
               is_eager=True,
               callback=print_version,
               expose_value=False)
-def cli(project_dir, run_dir, out_dir, rename, nextseq, verbose):
+def cli(project_dir, run_dir, out_dir, rename, oldmiseq, lanes, verbose):
     logging.info(f"Started BaseMountRetrieve (v{__version__})")
 
     if verbose:
@@ -817,9 +872,9 @@ def cli(project_dir, run_dir, out_dir, rename, nextseq, verbose):
     if project_dir:
         logging.debug(f"project_dir:\t{project_dir}")
         retrieve_project_contents_from_basemount(project_dir=project_dir, out_dir=out_dir, rename=rename)
-    elif run_dir and nextseq:
+    elif run_dir and not oldmiseq:
         logging.debug(f"NextSeq run_dir:\t{run_dir}")
-        retrieve_nextseq_experiment_contents_from_basemount(run_dir=run_dir, out_dir=out_dir, rename=rename)
+        retrieve_nextseq_experiment_contents_from_basemount(run_dir=run_dir, out_dir=out_dir, rename=rename, lanes=lanes)
     elif run_dir:
         logging.debug(f"run_dir:\t{run_dir}")
         retrieve_experiment_contents_from_basemount(run_dir=run_dir, out_dir=out_dir, rename=rename)
